@@ -7,7 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      devOptions: {
+        enabled: true // 👈 Essential for virtual modules to work in 'npm run dev'
+      },
       manifest: {
         name: 'My PWA App',
         short_name: 'PWAApp',
@@ -17,14 +20,36 @@ export default defineConfig({
         display: 'standalone',
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: '/pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any' // 👈 Essential! Tells Chrome this icon can be used on any home screen
           },
           {
-            src: 'pwa-512x512.png',
+            src: '/pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any' // 👈 Essential!
+          },
+          {
+            src: '/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable' // Optional separate entry for adaptive Android icons
+          }
+        ],
+        screenshots: [
+          {
+            src: '/screenshots/desktop-wide.png',
+            sizes: '1280x800',
+            type: 'image/png',
+            form_factor: 'wide'
+          },
+          {
+            src: '/screenshots/mobile-narrow.png',
+            sizes: '390x844',
+            type: 'image/png',
+            form_factor: 'narrow'
           }
         ]
       }
