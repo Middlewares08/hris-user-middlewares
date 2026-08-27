@@ -1,5 +1,8 @@
 // src/pages/Home.jsx
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import moment from 'moment';
 import {
     Fingerprint,
@@ -26,11 +29,13 @@ import { CustomAvatar } from '../components/CustomAvatar';
 import CustomEmptyPlaceholder from '../components/CustomEmptyPlaceholder';
 import Loading from '../components/Loading';
 import RequestLeaveModal from '../components/leave/RequestLeaveModal';
+import AnnouncementModal from '../components/announcement/AnnouncementModal';
 import { useAuthUser } from '../hooks/useAuthUser';
 import { useMyAttendanceHistory, useClockIn, useClockOut } from '../hooks/useAttendance';
 import { useMyActivity } from '../hooks/useActivity';
 import { useMyLeaveRequests } from '../hooks/useLeave';
-import { LEAVE_TYPES, LEAVE_STATUS_TONE } from '../utils/constants';
+import { useAnnouncements } from '../hooks/useAnnouncements';
+import { LEAVE_TYPES, LEAVE_STATUS_TONE, ANNOUNCEMENT_PRIORITY } from '../utils/constants';
 
 const STATS = [
     { id: 'leave', label: 'Leave Balance', value: '12.5', suffix: 'days', icon: CalendarDays, tone: 'text-emerald-600 bg-emerald-50', barTone: 'bg-emerald-400', percent: 62, meta: '12.5 of 20 days left' },
@@ -99,15 +104,25 @@ function mapLeaveRecord(record) {
     };
 }
 
-const ANNOUNCEMENTS = [
-    { id: 1, title: 'Company town hall this Friday, 4 PM', time: '2 hours ago', priority: 'Info', icon: Megaphone },
-    { id: 2, title: 'Payroll cut-off moved to Aug 28', time: 'Yesterday', priority: 'Important', icon: AlertTriangle },
-];
+// Resolves the icon name stored on ANNOUNCEMENT_PRIORITY to a concrete lucide component.
+const ANNOUNCEMENT_ICONS = { Megaphone, AlertTriangle, Zap };
 
-const ANNOUNCEMENT_TONE = {
-    Info: { badge: 'bg-sky-50 text-sky-700', bar: 'bg-sky-400', icon: 'text-sky-500 bg-sky-50' },
-    Important: { badge: 'bg-amber-50 text-amber-700', bar: 'bg-amber-400', icon: 'text-amber-500 bg-amber-50' },
-};
+// Maps a raw announcement.announcements row (from GET /announcements/me) into the shape the card renders.
+function mapAnnouncementRecord(record) {
+    const tone = ANNOUNCEMENT_PRIORITY[record.priority] || ANNOUNCEMENT_PRIORITY.info;
+    const when = record.published_at || record.created_at;
+
+    return {
+        id: record.id,
+        uuid: record.uuid,
+        title: record.title,
+        time: when ? moment(when).fromNow() : '',
+        priorityLabel: tone.label,
+        tone,
+        icon: ANNOUNCEMENT_ICONS[tone.icon] || Megaphone,
+        raw: record,
+    };
+}
 
 const ATTENDANCE_STATUS_LABELS = {
     present: 'On Time',
@@ -156,8 +171,11 @@ function mapAttendanceRecord(record, now = moment()) {
 
 function Home() {
     const { data: user } = useAuthUser();
+    const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
     const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+    const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
 
     const firstName = user?.firstName || 'Employee';
     const lastName = user?.lastName || '';
@@ -182,6 +200,16 @@ function Home() {
     const handleQuickAction = (id) => {
         if (id === 'time') return handleTimeClock();
         if (id === 'leave') return setIsLeaveModalOpen(true);
+        if (id === 'payslip') return navigate('/payroll');
+        if (id === 'documents') return navigate('/documents');
+    };
+
+    const handleSignOut = () => {
+        localStorage.removeItem('accessToken');
+        sessionStorage.removeItem('permissions');
+        queryClient.clear();
+        toast.success('Signed out');
+        navigate('/login', { replace: true });
     };
 
     // Ticks once a second while clocked in, so the "so far" counter runs live instead of a static snapshot
@@ -196,6 +224,9 @@ function Home() {
 
     const { data: activityLog = [], isLoading: isActivityLoading } = useMyActivity(4);
     const recentActivity = activityLog.map((record) => mapActivityRecord(record, now));
+
+    const { data: announcementRecords = [], isLoading: isAnnouncementsLoading } = useAnnouncements(10);
+    const announcements = announcementRecords.map(mapAnnouncementRecord);
 
     const { data: leaveRequests = [], isLoading: isLeaveLoading } = useMyLeaveRequests(50);
     const upcomingLeave = leaveRequests
@@ -298,6 +329,7 @@ function Home() {
                             <div className="space-y-1 border-t-0 pt-0 lg:mt-2 lg:border-t lg:border-slate-100 lg:pt-2">
                                 <button
                                     type="button"
+                                    onClick={() => navigate('/profile')}
                                     className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer"
                                 >
                                     <UserPen size={16} className="text-slate-400" />
@@ -305,6 +337,7 @@ function Home() {
                                 </button>
                                 <button
                                     type="button"
+                                    onClick={() => navigate('/settings')}
                                     className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer"
                                 >
                                     <Settings size={16} className="text-slate-400" />
@@ -312,6 +345,7 @@ function Home() {
                                 </button>
                                 <button
                                     type="button"
+                                    onClick={handleSignOut}
                                     className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 cursor-pointer"
                                 >
                                     <LogOut size={16} />
@@ -441,40 +475,41 @@ function Home() {
                                             <Bell size={16} className="text-slate-400" />
                                             <p className="text-sm font-semibold text-slate-900">Announcements</p>
                                         </div>
-                                        {ANNOUNCEMENTS.length > 0 && (
+                                        {announcements.length > 0 && (
                                             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-50 px-1.5 text-[10px] font-semibold text-rose-600">
-                                                {ANNOUNCEMENTS.length}
+                                                {announcements.length}
                                             </span>
                                         )}
                                     </div>
 
-                                    {ANNOUNCEMENTS.length === 0 ? (
+                                    {isAnnouncementsLoading ? (
+                                        <p className="text-sm text-slate-500">Loading announcements…</p>
+                                    ) : announcements.length === 0 ? (
                                         <p className="text-sm text-slate-500">No new announcements right now.</p>
                                     ) : (
                                         <div className="space-y-2.5">
-                                            {ANNOUNCEMENTS.map(({ id, title, time, priority, icon: Icon }) => {
-                                                const t = ANNOUNCEMENT_TONE[priority];
-                                                return (
-                                                    <div
-                                                        key={id}
-                                                        className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50/70 py-2.5 pl-2.5 pr-3"
-                                                    >
-                                                        <span className={`w-1 shrink-0 rounded-full ${t.bar}`} />
-                                                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${t.icon}`}>
-                                                            <Icon size={15} />
-                                                        </div>
-                                                        <div className="min-w-0 flex-1">
-                                                            <p className="text-sm font-medium leading-snug text-slate-700">{title}</p>
-                                                            <div className="mt-1 flex items-center gap-2">
-                                                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${t.badge}`}>
-                                                                    {priority}
-                                                                </span>
-                                                                <p className="text-xs text-slate-400">{time}</p>
-                                                            </div>
+                                            {announcements.map(({ id, title, time, priorityLabel, tone, icon: Icon, raw }) => (
+                                                <button
+                                                    key={id}
+                                                    type="button"
+                                                    onClick={() => setSelectedAnnouncement(raw)}
+                                                    className="flex w-full gap-3 rounded-xl border border-slate-100 bg-slate-50/70 py-2.5 pl-2.5 pr-3 text-left transition-colors hover:bg-slate-100 cursor-pointer"
+                                                >
+                                                    <span className={`w-1 shrink-0 rounded-full ${tone.bar}`} />
+                                                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tone.iconWrap}`}>
+                                                        <Icon size={15} />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-medium leading-snug text-slate-700">{title}</p>
+                                                        <div className="mt-1 flex items-center gap-2">
+                                                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone.badge}`}>
+                                                                {priorityLabel}
+                                                            </span>
+                                                            <p className="text-xs text-slate-400">{time}</p>
                                                         </div>
                                                     </div>
-                                                );
-                                            })}
+                                                </button>
+                                            ))}
                                         </div>
                                     )}
                                 </div>
@@ -560,6 +595,12 @@ function Home() {
             <RequestLeaveModal
                 isOpen={isLeaveModalOpen}
                 onClose={() => setIsLeaveModalOpen(false)}
+            />
+
+            <AnnouncementModal
+                isOpen={Boolean(selectedAnnouncement)}
+                onClose={() => setSelectedAnnouncement(null)}
+                announcement={selectedAnnouncement}
             />
 
             {/* Floating Quick Actions (mobile / small screens only) */}

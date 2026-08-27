@@ -144,3 +144,29 @@ export const LEAVE_STATUS_TONE = {
     rejected: 'bg-rose-50 text-rose-700',
     cancelled: 'bg-slate-100 text-slate-500',
 };
+
+// Mirrors the announcement.announcements `priority` enum on the backend.
+// `icon` names are resolved against lucide-react by the consuming component.
+export const ANNOUNCEMENT_PRIORITY = {
+    info: {
+        label: 'Info',
+        icon: 'Megaphone',
+        badge: 'bg-sky-50 text-sky-700',
+        bar: 'bg-sky-400',
+        iconWrap: 'text-sky-500 bg-sky-50',
+    },
+    important: {
+        label: 'Important',
+        icon: 'AlertTriangle',
+        badge: 'bg-amber-50 text-amber-700',
+        bar: 'bg-amber-400',
+        iconWrap: 'text-amber-500 bg-amber-50',
+    },
+    urgent: {
+        label: 'Urgent',
+        icon: 'Zap',
+        badge: 'bg-rose-50 text-rose-700',
+        bar: 'bg-rose-400',
+        iconWrap: 'text-rose-500 bg-rose-50',
+    },
+};
