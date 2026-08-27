@@ -122,3 +122,25 @@ export const DOCUMENT_TYPES = [
     { label: 'Other document', value: 'other' },
 
 ];
+
+// Mirrors the attendance.leave_requests `leave_type` enum on the backend.
+export const LEAVE_TYPES = [
+    { label: 'Vacation Leave', value: 'vacation' },
+    { label: 'Sick Leave', value: 'sick' },
+    { label: 'Emergency Leave', value: 'emergency' },
+    { label: 'Maternity Leave', value: 'maternity' },
+    { label: 'Paternity Leave', value: 'paternity' },
+    { label: 'Bereavement Leave', value: 'bereavement' },
+    { label: 'Unpaid Leave', value: 'unpaid' },
+    { label: 'Other', value: 'other' },
+];
+
+// How many days back an employee is still allowed to file a leave request.
+export const LEAVE_BACKFILE_DAYS = 3;
+
+export const LEAVE_STATUS_TONE = {
+    pending: 'bg-amber-50 text-amber-700',
+    approved: 'bg-emerald-50 text-emerald-700',
+    rejected: 'bg-rose-50 text-rose-700',
+    cancelled: 'bg-slate-100 text-slate-500',
+};

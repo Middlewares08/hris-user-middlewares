@@ -25,9 +25,12 @@ import {
 import { CustomAvatar } from '../components/CustomAvatar';
 import CustomEmptyPlaceholder from '../components/CustomEmptyPlaceholder';
 import Loading from '../components/Loading';
+import RequestLeaveModal from '../components/leave/RequestLeaveModal';
 import { useAuthUser } from '../hooks/useAuthUser';
 import { useMyAttendanceHistory, useClockIn, useClockOut } from '../hooks/useAttendance';
 import { useMyActivity } from '../hooks/useActivity';
+import { useMyLeaveRequests } from '../hooks/useLeave';
+import { LEAVE_TYPES, LEAVE_STATUS_TONE } from '../utils/constants';
 
 const STATS = [
     { id: 'leave', label: 'Leave Balance', value: '12.5', suffix: 'days', icon: CalendarDays, tone: 'text-emerald-600 bg-emerald-50', barTone: 'bg-emerald-400', percent: 62, meta: '12.5 of 20 days left' },
@@ -68,6 +71,31 @@ function mapActivityRecord(record, now = moment()) {
                 : when.format('MMM D, h:mm A'),
         icon: cat.icon,
         tone: cat.tone,
+    };
+}
+
+const LEAVE_TYPE_LABELS = LEAVE_TYPES.reduce(
+    (acc, { value, label }) => ({ ...acc, [value]: label }),
+    {},
+);
+
+// Maps a raw attendance.leave_requests row (from GET /leave-requests/me) into the shape the Upcoming Leave card renders.
+function mapLeaveRecord(record) {
+    const start = moment(record.start_date);
+    const end = moment(record.end_date);
+    const sameDay = start.isSame(end, 'day');
+    const days = Number(record.total_days);
+
+    return {
+        id: record.id,
+        uuid: record.uuid,
+        type: LEAVE_TYPE_LABELS[record.leave_type] || record.leave_type,
+        range: sameDay
+            ? start.format('MMM D, YYYY')
+            : `${start.format('MMM D')} – ${end.format('MMM D, YYYY')}`,
+        days,
+        status: record.status,
+        startsIn: start.isSame(moment(), 'day') ? 'Starts today' : `Starts ${start.fromNow()}`,
     };
 }
 
@@ -129,6 +157,7 @@ function mapAttendanceRecord(record, now = moment()) {
 function Home() {
     const { data: user } = useAuthUser();
     const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
+    const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
 
     const firstName = user?.firstName || 'Employee';
     const lastName = user?.lastName || '';
@@ -150,6 +179,11 @@ function Home() {
         else clockIn.mutate();
     };
 
+    const handleQuickAction = (id) => {
+        if (id === 'time') return handleTimeClock();
+        if (id === 'leave') return setIsLeaveModalOpen(true);
+    };
+
     // Ticks once a second while clocked in, so the "so far" counter runs live instead of a static snapshot
     const [now, setNow] = useState(() => moment());
     useEffect(() => {
@@ -162,6 +196,16 @@ function Home() {
 
     const { data: activityLog = [], isLoading: isActivityLoading } = useMyActivity(4);
     const recentActivity = activityLog.map((record) => mapActivityRecord(record, now));
+
+    const { data: leaveRequests = [], isLoading: isLeaveLoading } = useMyLeaveRequests(50);
+    const upcomingLeave = leaveRequests
+        .filter((record) =>
+            ['pending', 'approved'].includes(record.status) &&
+            moment(record.end_date).isSameOrAfter(moment(), 'day'),
+        )
+        .sort((a, b) => moment(a.start_date).valueOf() - moment(b.start_date).valueOf())
+        .slice(0, 4)
+        .map(mapLeaveRecord);
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
@@ -239,7 +283,7 @@ function Home() {
                                             <button
                                                 key={id}
                                                 type="button"
-                                                onClick={isTimeAction ? handleTimeClock : undefined}
+                                                onClick={() => handleQuickAction(id)}
                                                 disabled={isTimeAction && isPunchPending}
                                                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                                             >
@@ -458,11 +502,65 @@ function Home() {
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Upcoming leave */}
+                                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                    <div className="mb-4 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <CalendarDays size={16} className="text-slate-400" />
+                                            <p className="text-sm font-semibold text-slate-900">Upcoming Leave</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsLeaveModalOpen(true)}
+                                            className="text-xs font-semibold text-indigo-600 transition-colors hover:text-indigo-700 cursor-pointer"
+                                        >
+                                            Request
+                                        </button>
+                                    </div>
+
+                                    {isLeaveLoading ? (
+                                        <p className="text-sm text-slate-500">Loading leave…</p>
+                                    ) : upcomingLeave.length === 0 ? (
+                                        <p className="text-sm text-slate-500">No upcoming leave scheduled.</p>
+                                    ) : (
+                                        <div className="space-y-2.5">
+                                            {upcomingLeave.map(({ id, type, range, days, status, startsIn }) => (
+                                                <div
+                                                    key={id}
+                                                    className="rounded-xl border border-slate-100 bg-slate-50/70 p-3"
+                                                >
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <p className="truncate text-sm font-medium text-slate-700">{type}</p>
+                                                        <span
+                                                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${
+                                                                LEAVE_STATUS_TONE[status] || 'bg-slate-100 text-slate-500'
+                                                            }`}
+                                                        >
+                                                            {status}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
+                                                        <span>{range}</span>
+                                                        <span>
+                                                            {days} day{days === 1 ? '' : 's'} · {startsIn}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </main>
                 </div>
             </div>
+
+            <RequestLeaveModal
+                isOpen={isLeaveModalOpen}
+                onClose={() => setIsLeaveModalOpen(false)}
+            />
 
             {/* Floating Quick Actions (mobile / small screens only) */}
             <div className="fixed bottom-5 right-5 z-40 lg:hidden">
@@ -486,7 +584,7 @@ function Home() {
                                     key={id}
                                     type="button"
                                     onClick={() => {
-                                        if (isTimeAction) handleTimeClock();
+                                        handleQuickAction(id);
                                         setIsQuickActionsOpen(false);
                                     }}
                                     disabled={isTimeAction && isPunchPending}
