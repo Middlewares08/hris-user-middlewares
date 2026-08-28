@@ -29,13 +29,16 @@ import { CustomAvatar } from '../components/CustomAvatar';
 import CustomEmptyPlaceholder from '../components/CustomEmptyPlaceholder';
 import Loading from '../components/Loading';
 import RequestLeaveModal from '../components/leave/RequestLeaveModal';
+import RequestOvertimeModal from '../components/overtime/RequestOvertimeModal';
 import AnnouncementModal from '../components/announcement/AnnouncementModal';
 import { useAuthUser } from '../hooks/useAuthUser';
 import { useMyAttendanceHistory, useClockIn, useClockOut } from '../hooks/useAttendance';
 import { useMyActivity } from '../hooks/useActivity';
 import { useMyLeaveRequests } from '../hooks/useLeave';
+import { useMyOvertimeRequests } from '../hooks/useOvertime';
+import { useFeatureFlag } from '../hooks/useSettings';
 import { useAnnouncements } from '../hooks/useAnnouncements';
-import { LEAVE_TYPES, LEAVE_STATUS_TONE, ANNOUNCEMENT_PRIORITY } from '../utils/constants';
+import { LEAVE_TYPES, LEAVE_STATUS_TONE, REQUEST_STATUS_TONE, ANNOUNCEMENT_PRIORITY } from '../utils/constants';
 
 const STATS = [
     { id: 'leave', label: 'Leave Balance', value: '12.5', suffix: 'days', icon: CalendarDays, tone: 'text-emerald-600 bg-emerald-50', barTone: 'bg-emerald-400', percent: 62, meta: '12.5 of 20 days left' },
@@ -47,6 +50,7 @@ const STATS = [
 const QUICK_ACTIONS = [
     { id: 'time', label: 'Time In / Out', icon: Fingerprint },
     { id: 'leave', label: 'Request Leave', icon: CalendarDays },
+    { id: 'overtime', label: 'File Overtime', icon: Clock, flag: 'overtime.enabled' },
     { id: 'payslip', label: 'View Payslip', icon: Wallet },
     { id: 'documents', label: 'My Documents', icon: FileText },
 ];
@@ -175,7 +179,13 @@ function Home() {
     const queryClient = useQueryClient();
     const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
     const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+    const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
     const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+
+    const { enabled: isOvertimeEnabled } = useFeatureFlag('overtime.enabled', true);
+    const quickActions = QUICK_ACTIONS.filter(
+        (action) => !action.flag || (action.flag === 'overtime.enabled' && isOvertimeEnabled),
+    );
 
     const firstName = user?.firstName || 'Employee';
     const lastName = user?.lastName || '';
@@ -200,6 +210,7 @@ function Home() {
     const handleQuickAction = (id) => {
         if (id === 'time') return handleTimeClock();
         if (id === 'leave') return setIsLeaveModalOpen(true);
+        if (id === 'overtime') return setIsOvertimeModalOpen(true);
         if (id === 'payslip') return navigate('/payroll');
         if (id === 'documents') return navigate('/documents');
     };
@@ -211,6 +222,21 @@ function Home() {
         toast.success('Signed out');
         navigate('/login', { replace: true });
     };
+
+    // Everything from the "Controls" card, flattened for the small-screen speed-dial.
+    const mobileMenuActions = [
+        ...quickActions.map((action) => ({
+            id: action.id,
+            icon: action.icon,
+            label: action.id === 'time' ? (isClockedIn ? 'Time Out' : 'Time In') : action.label,
+            onSelect: () => handleQuickAction(action.id),
+            disabled: action.id === 'time' && isPunchPending,
+            active: action.id === 'time' && isClockedIn,
+        })),
+        { id: 'profile', icon: UserPen, label: 'Edit Profile', onSelect: () => navigate('/profile') },
+        { id: 'settings', icon: Settings, label: 'Settings', onSelect: () => navigate('/settings') },
+        { id: 'signout', icon: LogOut, label: 'Sign Out', onSelect: handleSignOut, tone: 'danger' },
+    ];
 
     // Ticks once a second while clocked in, so the "so far" counter runs live instead of a static snapshot
     const [now, setNow] = useState(() => moment());
@@ -237,6 +263,11 @@ function Home() {
         .sort((a, b) => moment(a.start_date).valueOf() - moment(b.start_date).valueOf())
         .slice(0, 4)
         .map(mapLeaveRecord);
+
+    const { data: overtimeRequests = [], isLoading: isOvertimeLoading } = useMyOvertimeRequests(50);
+    const recentOvertime = [...overtimeRequests]
+        .sort((a, b) => moment(b.work_date).valueOf() - moment(a.work_date).valueOf())
+        .slice(0, 4);
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
@@ -299,14 +330,14 @@ function Home() {
                             </div>
                         </div>
 
-                        {/* Controls */}
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        {/* Controls — small screens use the floating speed-dial instead */}
+                        <div className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:block">
                             <div className="hidden lg:block">
                                 <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                                     Quick Actions
                                 </p>
                                 <div className="space-y-1">
-                                    {QUICK_ACTIONS.map(({ id, label, icon: Icon }) => {
+                                    {quickActions.map(({ id, label, icon: Icon }) => {
                                         const isTimeAction = id === 'time';
                                         const displayLabel = isTimeAction ? (isClockedIn ? 'Time Out' : 'Time In') : label;
 
@@ -383,7 +414,7 @@ function Home() {
                             ))}
                         </div>
 
-                        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_1fr]">
+                        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                             {/* Clock-in history */}
                             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                                 <div className="mb-4 flex items-center justify-between">
@@ -586,6 +617,57 @@ function Home() {
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Overtime */}
+                                {isOvertimeEnabled && (
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                        <div className="mb-4 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Clock size={16} className="text-slate-400" />
+                                                <p className="text-sm font-semibold text-slate-900">Overtime</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsOvertimeModalOpen(true)}
+                                                className="text-xs font-semibold text-indigo-600 transition-colors hover:text-indigo-700 cursor-pointer"
+                                            >
+                                                File
+                                            </button>
+                                        </div>
+
+                                        {isOvertimeLoading ? (
+                                            <p className="text-sm text-slate-500">Loading overtime…</p>
+                                        ) : recentOvertime.length === 0 ? (
+                                            <p className="text-sm text-slate-500">No overtime filed yet.</p>
+                                        ) : (
+                                            <div className="space-y-2.5">
+                                                {recentOvertime.map((row) => (
+                                                    <div
+                                                        key={row.id}
+                                                        className="rounded-xl border border-slate-100 bg-slate-50/70 p-3"
+                                                    >
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <p className="truncate text-sm font-medium text-slate-700">
+                                                                {Number(row.hours)} hour{Number(row.hours) === 1 ? '' : 's'}
+                                                            </p>
+                                                            <span
+                                                                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${
+                                                                    REQUEST_STATUS_TONE[row.status] || 'bg-slate-100 text-slate-500'
+                                                                }`}
+                                                            >
+                                                                {row.status}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
+                                                            <span>{moment(row.work_date).format('MMM D, YYYY')}</span>
+                                                            <span className="truncate pl-2">{row.reason}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </main>
@@ -597,57 +679,79 @@ function Home() {
                 onClose={() => setIsLeaveModalOpen(false)}
             />
 
+            <RequestOvertimeModal
+                isOpen={isOvertimeModalOpen}
+                onClose={() => setIsOvertimeModalOpen(false)}
+            />
+
             <AnnouncementModal
                 isOpen={Boolean(selectedAnnouncement)}
                 onClose={() => setSelectedAnnouncement(null)}
                 announcement={selectedAnnouncement}
             />
 
-            {/* Floating Quick Actions (mobile / small screens only) */}
-            <div className="fixed bottom-5 right-5 z-40 lg:hidden">
+            {/* Floating Quick Actions — speed-dial, mobile / small screens only */}
+            <div className="lg:hidden">
+                {/* Backdrop — tap anywhere to dismiss */}
                 <div
-                    className={`absolute bottom-16 right-0 w-56 origin-bottom-right rounded-2xl border border-slate-200 bg-white p-2 shadow-xl transition-all duration-200 ${
-                        isQuickActionsOpen
-                            ? 'scale-100 opacity-100'
-                            : 'pointer-events-none scale-95 opacity-0'
+                    onClick={() => setIsQuickActionsOpen(false)}
+                    className={`fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-[2px] transition-opacity duration-200 ${
+                        isQuickActionsOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
                     }`}
-                >
-                    <p className="px-2 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        Quick Actions
-                    </p>
-                    <div className="space-y-1">
-                        {QUICK_ACTIONS.map(({ id, label, icon: Icon }) => {
-                            const isTimeAction = id === 'time';
-                            const displayLabel = isTimeAction ? (isClockedIn ? 'Time Out' : 'Time In') : label;
+                />
 
-                            return (
-                                <button
-                                    key={id}
-                                    type="button"
-                                    onClick={() => {
-                                        handleQuickAction(id);
-                                        setIsQuickActionsOpen(false);
-                                    }}
-                                    disabled={isTimeAction && isPunchPending}
-                                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                <div className="fixed bottom-5 right-5 z-50 flex max-h-[80vh] flex-col items-end gap-3 overflow-y-auto py-1 pr-1">
+                    {mobileMenuActions.map(({ id, label, icon: Icon, onSelect, disabled, active, tone }, index) => {
+                        const isDanger = tone === 'danger';
+                        // Items nearest the FAB animate first when opening.
+                        const delay = isQuickActionsOpen ? (mobileMenuActions.length - 1 - index) * 35 : 0;
+
+                        return (
+                            <button
+                                key={id}
+                                type="button"
+                                onClick={() => {
+                                    onSelect();
+                                    setIsQuickActionsOpen(false);
+                                }}
+                                disabled={disabled || !isQuickActionsOpen}
+                                style={{ transitionDelay: `${delay}ms` }}
+                                className={`flex items-center gap-3 transition-all duration-200 disabled:cursor-not-allowed ${
+                                    isQuickActionsOpen
+                                        ? 'translate-y-0 opacity-100'
+                                        : 'pointer-events-none translate-y-3 opacity-0'
+                                }`}
+                            >
+                                <span
+                                    className={`rounded-lg px-3 py-1.5 text-sm font-medium shadow-md ${
+                                        isDanger ? 'bg-white text-rose-600' : 'bg-white text-slate-700'
+                                    }`}
                                 >
-                                    <Icon size={16} className={isTimeAction && isClockedIn ? 'text-indigo-500' : 'text-slate-400'} />
-                                    {displayLabel}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
+                                    {label}
+                                </span>
+                                <span
+                                    className={`flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-lg ${
+                                        isDanger ? 'text-rose-500' : active ? 'text-indigo-500' : 'text-slate-500'
+                                    }`}
+                                >
+                                    <Icon size={18} />
+                                </span>
+                            </button>
+                        );
+                    })}
 
-                <button
-                    type="button"
-                    onClick={() => setIsQuickActionsOpen((open) => !open)}
-                    aria-expanded={isQuickActionsOpen}
-                    aria-label="Toggle quick actions"
-                    className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 transition-transform active:scale-95 cursor-pointer"
-                >
-                    {isQuickActionsOpen ? <X size={22} /> : <Zap size={22} />}
-                </button>
+                    <button
+                        type="button"
+                        onClick={() => setIsQuickActionsOpen((open) => !open)}
+                        aria-expanded={isQuickActionsOpen}
+                        aria-label="Toggle quick actions"
+                        className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 transition-transform duration-200 active:scale-95 cursor-pointer"
+                    >
+                        <span className={`transition-transform duration-200 ${isQuickActionsOpen ? 'rotate-90' : ''}`}>
+                            {isQuickActionsOpen ? <X size={22} /> : <Zap size={22} />}
+                        </span>
+                    </button>
+                </div>
             </div>
         </div>
     );

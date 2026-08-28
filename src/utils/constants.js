@@ -138,12 +138,19 @@ export const LEAVE_TYPES = [
 // How many days back an employee is still allowed to file a leave request.
 export const LEAVE_BACKFILE_DAYS = 3;
 
+// Shared pending/approved/rejected/cancelled tone map — used by leave and overtime.
 export const LEAVE_STATUS_TONE = {
     pending: 'bg-amber-50 text-amber-700',
     approved: 'bg-emerald-50 text-emerald-700',
     rejected: 'bg-rose-50 text-rose-700',
     cancelled: 'bg-slate-100 text-slate-500',
 };
+export const REQUEST_STATUS_TONE = LEAVE_STATUS_TONE;
+
+// How many days back an employee may back-file overtime, and the per-day ceiling.
+// MAX_OVERTIME_HOURS mirrors MAX_OT_HOURS_PER_DAY in the backend OvertimeRequestController.
+export const OVERTIME_BACKFILE_DAYS = 3;
+export const MAX_OVERTIME_HOURS = 12;
 
 // Mirrors the announcement.announcements `priority` enum on the backend.
 // `icon` names are resolved against lucide-react by the consuming component.
