@@ -147,6 +147,13 @@ export const LEAVE_STATUS_TONE = {
 };
 export const REQUEST_STATUS_TONE = LEAVE_STATUS_TONE;
 
+// employee.document_requests `status` enum — distinct from leave/overtime (uses `fulfilled`).
+export const DOCUMENT_REQUEST_STATUS_TONE = {
+    pending: 'bg-amber-50 text-amber-700',
+    fulfilled: 'bg-emerald-50 text-emerald-700',
+    cancelled: 'bg-slate-100 text-slate-500',
+};
+
 // How many days back an employee may back-file overtime, and the per-day ceiling.
 // MAX_OVERTIME_HOURS mirrors MAX_OT_HOURS_PER_DAY in the backend OvertimeRequestController.
 export const OVERTIME_BACKFILE_DAYS = 3;

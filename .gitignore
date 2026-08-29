@@ -38,3 +38,8 @@ dist-ssr
 .vscode
 .idea
 .DS_Store
+
+# Environment files — keep only the template
+.env
+.env.*
+!.env.example

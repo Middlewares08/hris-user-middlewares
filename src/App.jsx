@@ -4,6 +4,7 @@ import { InstallBanner } from './components/InstallBanner';
 import { Toaster } from 'sonner';
 import { Route, Routes } from 'react-router-dom';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
 import ProtectedRoute from './layout/ProtectedRoute'
 import Home from './pages/Home';
 import Documents from './pages/Documents';
@@ -19,6 +20,7 @@ function App() {
       <Toaster richColors position="top-right" closeButton />
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route
           path="/home"
           element={

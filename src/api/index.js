@@ -29,7 +29,13 @@ apiClient.interceptors.response.use(
         const originalRequest = error.config;
 
         // 1. Define routes that SHOULD NOT trigger a refresh/redirect on 401
-        const skipRefreshRoutes = ['auth/login', '/auth/login/verify-otp'];
+        const skipRefreshRoutes = [
+            'auth/login',
+            '/auth/login/verify-otp',
+            '/auth/login/resend-otp',
+            '/auth/forgot-password',
+            '/auth/reset-password',
+        ];
         const isSkipRoute = skipRefreshRoutes.some(route => originalRequest.url.includes(route));
 
         // 2. Only attempt refresh if it's a 401 AND NOT one of our skip routes

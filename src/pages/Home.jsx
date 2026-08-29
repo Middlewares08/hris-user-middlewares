@@ -36,6 +36,7 @@ import { useMyAttendanceHistory, useClockIn, useClockOut } from '../hooks/useAtt
 import { useMyActivity } from '../hooks/useActivity';
 import { useMyLeaveRequests } from '../hooks/useLeave';
 import { useMyOvertimeRequests } from '../hooks/useOvertime';
+import { useMyDocumentRequests } from '../hooks/useDocuments';
 import { useFeatureFlag } from '../hooks/useSettings';
 import { useAnnouncements } from '../hooks/useAnnouncements';
 import { LEAVE_TYPES, LEAVE_STATUS_TONE, REQUEST_STATUS_TONE, ANNOUNCEMENT_PRIORITY } from '../utils/constants';
@@ -187,6 +188,11 @@ function Home() {
         (action) => !action.flag || (action.flag === 'overtime.enabled' && isOvertimeEnabled),
     );
 
+    const { data: documentRequests = [] } = useMyDocumentRequests();
+    const pendingDocRequests = documentRequests.filter((r) => r.status === 'pending').length;
+    // Per-quick-action badge count keyed by action id.
+    const quickActionBadge = { documents: pendingDocRequests };
+
     const firstName = user?.firstName || 'Employee';
     const lastName = user?.lastName || '';
     const position = user?.position?.name || 'Team Member';
@@ -232,6 +238,7 @@ function Home() {
             onSelect: () => handleQuickAction(action.id),
             disabled: action.id === 'time' && isPunchPending,
             active: action.id === 'time' && isClockedIn,
+            badge: quickActionBadge[action.id] || 0,
         })),
         { id: 'profile', icon: UserPen, label: 'Edit Profile', onSelect: () => navigate('/profile') },
         { id: 'settings', icon: Settings, label: 'Settings', onSelect: () => navigate('/settings') },
@@ -340,6 +347,7 @@ function Home() {
                                     {quickActions.map(({ id, label, icon: Icon }) => {
                                         const isTimeAction = id === 'time';
                                         const displayLabel = isTimeAction ? (isClockedIn ? 'Time Out' : 'Time In') : label;
+                                        const badge = quickActionBadge[id] || 0;
 
                                         return (
                                             <button
@@ -351,6 +359,11 @@ function Home() {
                                             >
                                                 <Icon size={16} className={isTimeAction && isClockedIn ? 'text-indigo-500' : 'text-slate-400'} />
                                                 {displayLabel}
+                                                {badge > 0 && (
+                                                    <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700">
+                                                        {badge}
+                                                    </span>
+                                                )}
                                             </button>
                                         );
                                     })}
@@ -701,7 +714,7 @@ function Home() {
                 />
 
                 <div className="fixed bottom-5 right-5 z-50 flex max-h-[80vh] flex-col items-end gap-3 overflow-y-auto py-1 pr-1">
-                    {mobileMenuActions.map(({ id, label, icon: Icon, onSelect, disabled, active, tone }, index) => {
+                    {mobileMenuActions.map(({ id, label, icon: Icon, onSelect, disabled, active, tone, badge }, index) => {
                         const isDanger = tone === 'danger';
                         // Items nearest the FAB animate first when opening.
                         const delay = isQuickActionsOpen ? (mobileMenuActions.length - 1 - index) * 35 : 0;
@@ -730,11 +743,16 @@ function Home() {
                                     {label}
                                 </span>
                                 <span
-                                    className={`flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-lg ${
+                                    className={`relative flex h-11 w-11 items-center justify-center rounded-full bg-white shadow-lg ${
                                         isDanger ? 'text-rose-500' : active ? 'text-indigo-500' : 'text-slate-500'
                                     }`}
                                 >
                                     <Icon size={18} />
+                                    {badge > 0 && (
+                                        <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white">
+                                            {badge}
+                                        </span>
+                                    )}
                                 </span>
                             </button>
                         );

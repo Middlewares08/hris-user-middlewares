@@ -1,6 +1,7 @@
 // src/components/Login.jsx
 import { Lock, Mail, ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 // import { useSystemInit } from '../hooks/useSystem';
 import CustomButton from "../components/CustomButton";
@@ -8,7 +9,10 @@ import CustomInput from "../components/CustomInput";
 
 function Login() {
     // Pull our centralized architectural states
-    const { isVerifyOTP, login, verifyOtp, loading, error, tempToken } = useAuth();
+    const {
+        isVerifyOTP, login, verifyOtp, loading, error, tempToken,
+        maskedPhone, devCode, resendOtp, resendPending, resendDone,
+    } = useAuth();
     // const { initializeSystem, result } = useSystemInit();
     
     // Controlled form inputs (initialized with safe empty strings)
@@ -53,7 +57,9 @@ function Login() {
             <div className="space-y-1 text-center">
                 <p className="text-2xl font-semibold leading-snug text-slate-900">Welcome to HRIS Middleware</p>
                 <p className="text-sm text-slate-500">
-                    {isVerifyOTP ? "Enter your 2FA verification code" : "Sign in to continue"}
+                    {isVerifyOTP
+                        ? `Enter the code we texted to ${maskedPhone || 'your phone'}`
+                        : "Sign in to continue"}
                 </p>
             </div>
 
@@ -108,7 +114,7 @@ function Login() {
                 </form>
 
                 <div className="flex justify-between text-xs pt-2">
-                    <a href="#" className="text-slate-500 hover:text-slate-900 transition-colors">Forgot password?</a>
+                    <Link to="/forgot-password" className="text-slate-500 hover:text-slate-900 transition-colors">Forgot password?</Link>
                     <a href="#" className="text-slate-500 hover:text-slate-900 transition-colors">
                         Need an account? <span className="text-slate-900 font-medium">Sign up</span>
                     </a>
@@ -117,6 +123,11 @@ function Login() {
             ) : (
                 /* PHASE 2: SECURITY OTP VALIDATION VIEW */
                 <form onSubmit={handleOtpSubmit} className="space-y-4">
+                    {devCode && (
+                        <div className="bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium p-3 rounded-lg text-center">
+                            Dev mode — your code is <span className="font-mono font-bold">{devCode}</span>
+                        </div>
+                    )}
                     <CustomInput
                         label="One-Time Code"
                         labelPosition='left'
@@ -131,13 +142,22 @@ function Login() {
                         inputClassName="tracking-widest placeholder:tracking-normal font-mono"
                     />
                     
-                    <CustomButton 
+                    <CustomButton
                         children={loading ? 'Confirming code...' : 'Confirm Authentication'}
                         type='submit'
-                        disabled={loading} 
+                        disabled={loading}
                         isLoading={loading}
                         variant='primary'
                     />
+
+                    <button
+                        type="button"
+                        onClick={() => resendOtp().catch(() => {})}
+                        disabled={resendPending}
+                        className="w-full text-xs text-slate-500 hover:text-slate-900 transition-colors disabled:opacity-50"
+                    >
+                        {resendPending ? 'Sending…' : resendDone ? 'New code sent' : "Didn't get it? Resend code"}
+                    </button>
                 </form>
             )}
 
