@@ -31,6 +31,7 @@ import Loading from '../components/Loading';
 import RequestLeaveModal from '../components/leave/RequestLeaveModal';
 import RequestOvertimeModal from '../components/overtime/RequestOvertimeModal';
 import AnnouncementModal from '../components/announcement/AnnouncementModal';
+import FaceVerifyModal from '../components/attendance/FaceVerifyModal';
 import { useAuthUser } from '../hooks/useAuthUser';
 import { useMyAttendanceHistory, useClockIn, useClockOut } from '../hooks/useAttendance';
 import { useMyActivity } from '../hooks/useActivity';
@@ -38,6 +39,7 @@ import { useMyLeaveRequests } from '../hooks/useLeave';
 import { useMyOvertimeRequests } from '../hooks/useOvertime';
 import { useMyDocumentRequests } from '../hooks/useDocuments';
 import { useFeatureFlag } from '../hooks/useSettings';
+import { useMyFaceEnrollment } from '../hooks/useFaceEnrollment';
 import { useAnnouncements } from '../hooks/useAnnouncements';
 import { LEAVE_TYPES, LEAVE_STATUS_TONE, REQUEST_STATUS_TONE, ANNOUNCEMENT_PRIORITY } from '../utils/constants';
 
@@ -181,6 +183,7 @@ function Home() {
     const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
     const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
     const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
+    const [faceModalAction, setFaceModalAction] = useState(null); // null | 'in' | 'out'
     const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
 
     const { enabled: isOvertimeEnabled } = useFeatureFlag('overtime.enabled', true);
@@ -203,14 +206,37 @@ function Home() {
     const clockIn = useClockIn();
     const clockOut = useClockOut();
 
+    const { enabled: faceClockinEnabled } = useFeatureFlag('face.clockin_enabled', false);
+    const { enabled: faceLivenessEnabled } = useFeatureFlag('face.liveness_enabled', false);
+    const { data: faceEnrollment } = useMyFaceEnrollment();
+    const faceRequired = faceClockinEnabled && !!faceEnrollment?.enrolled;
+
     const todayLog = attendanceHistory.find((record) => moment(record.log_date).isSame(moment(), 'day'));
     const isClockedIn = !!todayLog && !todayLog.time_out;
     const isPunchPending = clockIn.isPending || clockOut.isPending;
 
+    const runPunch = (action, { image, livenessSessionId } = {}) => {
+        const args = image || livenessSessionId ? { image, livenessSessionId } : undefined;
+        return action === 'out' ? clockOut.mutateAsync(args) : clockIn.mutateAsync(args);
+    };
+
     const handleTimeClock = () => {
         if (isPunchPending) return;
-        if (isClockedIn) clockOut.mutate();
-        else clockIn.mutate();
+        const action = isClockedIn ? 'out' : 'in';
+        if (faceRequired) {
+            setFaceModalAction(action);
+            return;
+        }
+        runPunch(action).catch(() => {});
+    };
+
+    const handleFaceCapture = async ({ blob, livenessSessionId } = {}) => {
+        try {
+            await runPunch(faceModalAction, { image: blob, livenessSessionId });
+            setFaceModalAction(null);
+        } catch {
+            // error toast is raised by the mutation hook; keep the modal open for a retry
+        }
     };
 
     const handleQuickAction = (id) => {
@@ -696,6 +722,16 @@ function Home() {
                 isOpen={isOvertimeModalOpen}
                 onClose={() => setIsOvertimeModalOpen(false)}
             />
+
+            {faceModalAction && (
+                <FaceVerifyModal
+                    action={faceModalAction}
+                    liveness={faceLivenessEnabled}
+                    submitting={isPunchPending}
+                    onClose={() => setFaceModalAction(null)}
+                    onCapture={handleFaceCapture}
+                />
+            )}
 
             <AnnouncementModal
                 isOpen={Boolean(selectedAnnouncement)}

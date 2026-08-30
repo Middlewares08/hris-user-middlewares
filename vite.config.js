@@ -13,6 +13,18 @@ export default defineConfig({
       devOptions: {
         enabled: true // 👈 Essential for virtual modules to work in 'npm run dev'
       },
+      workbox: {
+        // The Amplify Face Liveness bundle is large and only used when an employee
+        // runs a liveness check — load it on demand, don't precache it.
+        globIgnores: ['**/FaceLivenessCheck-*'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\/FaceLivenessCheck-.*\.(js|css)$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'face-liveness', expiration: { maxEntries: 4 } },
+          },
+        ],
+      },
       manifest: {
         name: 'My PWA App',
         short_name: 'PWAApp',
