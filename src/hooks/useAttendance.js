@@ -10,6 +10,16 @@ export const useMyAttendanceHistory = (limit = 5) => {
     });
 };
 
+// Attendance logs within an explicit date window — used for month-to-date stats.
+export const useMyAttendanceRange = ({ dateFrom, dateTo } = {}) => {
+    return useQuery({
+        queryKey: ['myAttendance', 'range', dateFrom, dateTo],
+        queryFn: () => attendanceService.getMyHistory({ date_from: dateFrom, date_to: dateTo, limit: 400 }),
+        select: (res) => res?.data || [],
+        enabled: Boolean(dateFrom && dateTo),
+    });
+};
+
 export const useClockIn = () => {
     const queryClient = useQueryClient();
 

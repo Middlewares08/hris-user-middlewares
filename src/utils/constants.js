@@ -115,6 +115,16 @@ export const RELATIONSHIP_OPTIONS = [
   { label: 'Other', value: 'other' }
 ].sort((a, b) => a.label.localeCompare(b.label));
 
+// Philippine statutory identifiers. `digits` = the exact digit counts a value may
+// have (formatting/dashes stripped first); drives the placeholder + client-side
+// validation on the Government & Bank Details page. Mirrors the backend whitelist.
+export const PH_STATUTORY_FORMATS = {
+    sss_number: { label: 'SSS Number', placeholder: '34-1234567-8', digits: [10] },
+    tin_number: { label: 'TIN', placeholder: '123-456-789-000', digits: [9, 12] },
+    philhealth_number: { label: 'PhilHealth Number', placeholder: '12-345678901-2', digits: [12] },
+    pagibig_number: { label: 'Pag-IBIG MID Number', placeholder: '1234-5678-9012', digits: [12] },
+};
+
 export const DOCUMENT_TYPES = [
     { label: 'Resume', value: 'resume' },
     { label: 'Medical', value: 'medical' },

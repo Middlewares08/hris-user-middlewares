@@ -11,4 +11,10 @@ export const payslipService = {
         const { data } = await apiClient.get(`/payroll/payslips/me/${uuid}`);
         return data;
     },
+
+    // Nearest upcoming pay period (falls back to the latest past one server-side).
+    getNextPeriod: async () => {
+        const { data } = await apiClient.get('/payroll/periods/next');
+        return data;
+    },
 };

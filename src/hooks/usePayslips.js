@@ -10,6 +10,16 @@ export const useMyPayslips = (limit = 12) => {
     });
 };
 
+// Nearest upcoming pay date — drives the dashboard "Next Payday" tile.
+export const useNextPayday = () => {
+    return useQuery({
+        queryKey: ['nextPayday'],
+        queryFn: payslipService.getNextPeriod,
+        select: (res) => res?.data || null,
+        staleTime: 60 * 60 * 1000,
+    });
+};
+
 // Single payslip (with line items + run/period) via its uuid.
 export const useMyPayslip = (uuid) => {
     return useQuery({

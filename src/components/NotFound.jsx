@@ -42,11 +42,11 @@ export default function NotFound() {
                 </button>
                 
                 <button
-                    onClick={() => navigate('/dashboard')} // 🎯 Direct layout route jump
+                    onClick={() => navigate('/home')} // 🎯 Direct layout route jump
                     className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-semibold transition-all shadow-xs cursor-pointer"
                 >
                     <Home size={16} />
-                    Return Dashboard
+                    Return Home
                 </button>
             </div>
             

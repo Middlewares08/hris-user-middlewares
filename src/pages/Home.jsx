@@ -19,6 +19,7 @@ import {
     CheckCircle2,
     AlertCircle,
     IdCard,
+    Landmark,
     Building2,
     Megaphone,
     AlertTriangle,
@@ -33,22 +34,118 @@ import RequestOvertimeModal from '../components/overtime/RequestOvertimeModal';
 import AnnouncementModal from '../components/announcement/AnnouncementModal';
 import FaceVerifyModal from '../components/attendance/FaceVerifyModal';
 import { useAuthUser } from '../hooks/useAuthUser';
-import { useMyAttendanceHistory, useClockIn, useClockOut } from '../hooks/useAttendance';
+import { useMyAttendanceHistory, useMyAttendanceRange, useClockIn, useClockOut } from '../hooks/useAttendance';
+import { useNextPayday } from '../hooks/usePayslips';
 import { useMyActivity } from '../hooks/useActivity';
 import { useMyLeaveRequests } from '../hooks/useLeave';
 import { useMyOvertimeRequests } from '../hooks/useOvertime';
 import { useMyDocumentRequests } from '../hooks/useDocuments';
-import { useFeatureFlag } from '../hooks/useSettings';
+import { useFeatureFlag, usePublicSettings } from '../hooks/useSettings';
 import { useMyFaceEnrollment } from '../hooks/useFaceEnrollment';
 import { useAnnouncements } from '../hooks/useAnnouncements';
 import { LEAVE_TYPES, LEAVE_STATUS_TONE, REQUEST_STATUS_TONE, ANNOUNCEMENT_PRIORITY } from '../utils/constants';
 
-const STATS = [
-    { id: 'leave', label: 'Leave Balance', value: '12.5', suffix: 'days', icon: CalendarDays, tone: 'text-emerald-600 bg-emerald-50', barTone: 'bg-emerald-400', percent: 62, meta: '12.5 of 20 days left' },
-    { id: 'attendance', label: 'Attendance', value: '96', suffix: '%', icon: TrendingUp, tone: 'text-sky-600 bg-sky-50', barTone: 'bg-sky-400', percent: 96, meta: '+2% vs last month' },
-    { id: 'pending', label: 'Pending Requests', value: '2', suffix: '', icon: ClipboardList, tone: 'text-amber-600 bg-amber-50', barTone: 'bg-amber-400', percent: 40, meta: 'Awaiting approval' },
-    { id: 'payday', label: 'Next Payday', value: 'Aug 30', suffix: '', icon: Wallet, tone: 'text-violet-600 bg-violet-50', barTone: 'bg-violet-400', percent: 80, meta: 'In 8 days' },
-];
+// Leave types that draw down the annual paid-leave credit (mirrors the backend note on
+// the `leave.annual_credits` setting). Maternity/paternity/bereavement/unpaid don't count.
+const CREDITED_LEAVE_TYPES = ['vacation', 'sick', 'emergency'];
+
+// Builds the four dashboard tiles from live data. Everything is defensive so the cards
+// still render (as 0 / —) while the underlying queries are loading or empty.
+function buildStats({ leaveRequests, monthAttendance, overtimeRequests, pendingDocRequests, annualLeaveCredits, nextPayday }) {
+    const now = moment();
+
+    // --- Leave balance: annual credits minus days approved this calendar year ---
+    const leaveDaysUsed = leaveRequests
+        .filter((r) =>
+            r.status === 'approved' &&
+            CREDITED_LEAVE_TYPES.includes(r.leave_type) &&
+            moment(r.start_date).isSame(now, 'year'),
+        )
+        .reduce((sum, r) => sum + Number(r.total_days || 0), 0);
+    const leaveRemaining = Math.max(0, annualLeaveCredits - leaveDaysUsed);
+
+    // --- Attendance: month-to-date worked days over scheduled days ---
+    const workedDays = monthAttendance.reduce((sum, r) => {
+        if (r.status === 'present' || r.status === 'late') return sum + 1;
+        if (r.status === 'half_day') return sum + 0.5;
+        return sum;
+    }, 0);
+    const scheduledDays = monthAttendance.filter((r) => !['holiday', 'on_leave'].includes(r.status)).length;
+    const attendanceRate = scheduledDays ? Math.round((workedDays / scheduledDays) * 100) : 0;
+
+    // --- Pending requests: leave + overtime + document requests awaiting approval ---
+    const pendingLeave = leaveRequests.filter((r) => r.status === 'pending').length;
+    const pendingOvertime = overtimeRequests.filter((r) => r.status === 'pending').length;
+    const pendingCount = pendingLeave + pendingOvertime + pendingDocRequests;
+
+    // --- Next payday ---
+    const payDate = nextPayday?.pay_date ? moment(nextPayday.pay_date) : null;
+    const daysToPayday = payDate ? payDate.clone().startOf('day').diff(now.clone().startOf('day'), 'days') : null;
+    let paydayMeta = 'No pay schedule yet';
+    if (payDate) {
+        if (daysToPayday > 1) paydayMeta = `In ${daysToPayday} days`;
+        else if (daysToPayday === 1) paydayMeta = 'Tomorrow';
+        else if (daysToPayday === 0) paydayMeta = 'Today';
+        else paydayMeta = `Paid ${payDate.fromNow()}`;
+    }
+    let paydayPercent = 0;
+    if (nextPayday?.period_start && payDate) {
+        const total = payDate.diff(moment(nextPayday.period_start), 'days') || 1;
+        const elapsed = now.clone().startOf('day').diff(moment(nextPayday.period_start), 'days');
+        paydayPercent = Math.max(0, Math.min(100, Math.round((elapsed / total) * 100)));
+    }
+
+    const round1 = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+    return [
+        {
+            id: 'leave',
+            label: 'Leave Balance',
+            value: round1(leaveRemaining),
+            suffix: 'days',
+            icon: CalendarDays,
+            tone: 'text-emerald-600 bg-emerald-50',
+            barTone: 'bg-emerald-400',
+            percent: annualLeaveCredits ? Math.round((leaveRemaining / annualLeaveCredits) * 100) : 0,
+            meta: `${round1(leaveRemaining)} of ${annualLeaveCredits} days left`,
+        },
+        {
+            id: 'attendance',
+            label: 'Attendance',
+            value: String(attendanceRate),
+            suffix: '%',
+            icon: TrendingUp,
+            tone: 'text-sky-600 bg-sky-50',
+            barTone: 'bg-sky-400',
+            percent: attendanceRate,
+            meta: scheduledDays
+                ? `${round1(workedDays)} of ${scheduledDays} days · ${now.format('MMM')}`
+                : `No records in ${now.format('MMMM')}`,
+        },
+        {
+            id: 'pending',
+            label: 'Pending Requests',
+            value: String(pendingCount),
+            suffix: '',
+            icon: ClipboardList,
+            tone: 'text-amber-600 bg-amber-50',
+            barTone: 'bg-amber-400',
+            percent: Math.min(100, pendingCount * 25),
+            meta: pendingCount ? 'Awaiting approval' : 'All caught up',
+        },
+        {
+            id: 'payday',
+            label: 'Next Payday',
+            value: payDate ? payDate.format('MMM D') : '—',
+            suffix: '',
+            icon: Wallet,
+            tone: 'text-violet-600 bg-violet-50',
+            barTone: 'bg-violet-400',
+            percent: paydayPercent,
+            meta: paydayMeta,
+        },
+    ];
+}
 
 const QUICK_ACTIONS = [
     { id: 'time', label: 'Time In / Out', icon: Fingerprint },
@@ -56,6 +153,7 @@ const QUICK_ACTIONS = [
     { id: 'overtime', label: 'File Overtime', icon: Clock, flag: 'overtime.enabled' },
     { id: 'payslip', label: 'View Payslip', icon: Wallet },
     { id: 'documents', label: 'My Documents', icon: FileText },
+    { id: 'government', label: 'Government & Bank', icon: Landmark },
 ];
 
 // Maps an activity_logs `category` to the icon + colour tone the timeline renders.
@@ -200,7 +298,8 @@ function Home() {
     const lastName = user?.lastName || '';
     const position = user?.position?.name || 'Team Member';
     const department = user?.position?.department?.name || 'General';
-    const employeeId = user?.id || '—';
+    const employeeId = user?.employeeId || '—';
+    console.log('user: ', user);
 
     const { data: attendanceHistory = [], isLoading: isHistoryLoading } = useMyAttendanceHistory(5);
     const clockIn = useClockIn();
@@ -245,6 +344,7 @@ function Home() {
         if (id === 'overtime') return setIsOvertimeModalOpen(true);
         if (id === 'payslip') return navigate('/payroll');
         if (id === 'documents') return navigate('/documents');
+        if (id === 'government') return navigate('/government-details');
     };
 
     const handleSignOut = () => {
@@ -302,6 +402,26 @@ function Home() {
         .sort((a, b) => moment(b.work_date).valueOf() - moment(a.work_date).valueOf())
         .slice(0, 4);
 
+    // --- Dashboard stat tiles: all live-data backed ---
+    const { data: publicSettings = {} } = usePublicSettings();
+    const annualLeaveCredits = Number(publicSettings['leave.annual_credits']) || 15;
+
+    const { data: monthAttendance = [] } = useMyAttendanceRange({
+        dateFrom: moment().startOf('month').format('YYYY-MM-DD'),
+        dateTo: moment().endOf('month').format('YYYY-MM-DD'),
+    });
+
+    const { data: nextPayday } = useNextPayday();
+
+    const stats = buildStats({
+        leaveRequests,
+        monthAttendance,
+        overtimeRequests,
+        pendingDocRequests,
+        annualLeaveCredits,
+        nextPayday,
+    });
+
     return (
         <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
             <div className="mx-auto max-w-6xl text-left">
@@ -327,7 +447,7 @@ function Home() {
                                         />
                                         <span className="absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-2 border-white bg-emerald-500">
                                             <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-75" />
-                                        </span>
+                                       </span>
                                     </div>
                                     <p className="mt-3 text-base font-semibold text-slate-900">
                                         {firstName} {lastName}
@@ -428,7 +548,7 @@ function Home() {
                     {/* Main: stats + activity */}
                     <main className="space-y-6">
                         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                            {STATS.map(({ id, label, value, suffix, icon: Icon, tone, barTone, percent, meta }) => (
+                            {stats.map(({ id, label, value, suffix, icon: Icon, tone, barTone, percent, meta }) => (
                                 <div
                                     key={id}
                                     className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"

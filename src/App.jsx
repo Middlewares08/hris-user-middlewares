@@ -1,5 +1,5 @@
 // src/App.jsx
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { InstallBanner } from './components/InstallBanner';
 import { Toaster } from 'sonner';
 import { Route, Routes } from 'react-router-dom';
@@ -8,9 +8,15 @@ import ForgotPassword from './pages/ForgotPassword';
 import ProtectedRoute from './layout/ProtectedRoute'
 import Home from './pages/Home';
 import Documents from './pages/Documents';
-import EditProfile from './pages/EditProfile';
+import GovernmentDetails from './pages/GovernmentDetails';
 import Settings from './pages/Settings';
 import Payroll from './pages/Payroll';
+import NotFound from './components/NotFound';
+import Loading from './components/Loading';
+
+// Lazy-loaded: the Home Address picker pulls in `addresspinas` (the full PSGC
+// dataset, ~1.9 MB), which must stay out of the main / precached PWA bundle.
+const EditProfile = lazy(() => import('./pages/EditProfile'));
 
 
 function App() {
@@ -18,6 +24,7 @@ function App() {
   return (
     <>
       <Toaster richColors position="top-right" closeButton />
+      <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50"><Loading size="sm" text="Loading" /></div>}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -56,6 +63,14 @@ function App() {
           }
         />
         <Route
+          path="/government-details"
+          element={
+            <ProtectedRoute>
+              <GovernmentDetails />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/settings"
           element={
             <ProtectedRoute>
@@ -63,7 +78,10 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/* Any unmatched path — full-screen 404 */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
+      </Suspense>
     </>
   );
 }

@@ -4,6 +4,15 @@ import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep the heavy PSGC dataset in its own chunk so the service worker can
+        // exclude it from the precache manifest (see workbox.globIgnores below).
+        manualChunks: (id) => (id.includes('node_modules/addresspinas') ? 'address-data' : undefined),
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -14,14 +23,22 @@ export default defineConfig({
         enabled: true // 👈 Essential for virtual modules to work in 'npm run dev'
       },
       workbox: {
-        // The Amplify Face Liveness bundle is large and only used when an employee
-        // runs a liveness check — load it on demand, don't precache it.
-        globIgnores: ['**/FaceLivenessCheck-*'],
+        // Large, feature-specific bundles that aren't needed on first paint:
+        //  - FaceLivenessCheck: the Amplify liveness UI (liveness checks only)
+        //  - address-data: the full PSGC dataset from `addresspinas` (~1.9 MB),
+        //    only pulled when an employee edits their profile Home Address.
+        // Load both on demand and runtime-cache them; don't precache.
+        globIgnores: ['**/FaceLivenessCheck-*', '**/address-data-*'],
         runtimeCaching: [
           {
             urlPattern: /\/assets\/FaceLivenessCheck-.*\.(js|css)$/,
             handler: 'CacheFirst',
             options: { cacheName: 'face-liveness', expiration: { maxEntries: 4 } },
+          },
+          {
+            urlPattern: /\/assets\/address-data-.*\.js$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'address-data', expiration: { maxEntries: 2 } },
           },
         ],
       },
