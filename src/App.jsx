@@ -3,6 +3,7 @@ import React, { Suspense, lazy } from 'react';
 import { InstallBanner } from './components/InstallBanner';
 import { Toaster } from 'sonner';
 import { Route, Routes } from 'react-router-dom';
+import Landing from './pages/Landing';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ProtectedRoute from './layout/ProtectedRoute'
@@ -26,6 +27,7 @@ function App() {
       <Toaster richColors position="top-right" closeButton />
       <Suspense fallback={<div className="grid min-h-screen place-items-center bg-slate-50"><Loading size="sm" text="Loading" /></div>}>
       <Routes>
+        <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route
