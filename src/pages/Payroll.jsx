@@ -2,10 +2,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import moment from 'moment';
-import { ArrowLeft, Wallet, ChevronRight, CalendarDays, Receipt } from 'lucide-react';
+import { ArrowLeft, Wallet, ChevronRight, CalendarDays, Receipt, Download, FilePlus2, X } from 'lucide-react';
 import CustomEmptyPlaceholder from '../components/CustomEmptyPlaceholder';
 import Loading from '../components/Loading';
-import { useMyPayslips, useMyPayslip } from '../hooks/usePayslips';
+import RequestPayslipModal from '../components/payroll/RequestPayslipModal';
+import {
+    useMyPayslips,
+    useMyPayslip,
+    useMyPayslipRequests,
+    useCancelPayslipRequest,
+    downloadMyPayslipPdf,
+} from '../hooks/usePayslips';
+import { PAYSLIP_REQUEST_STATUS_TONE } from '../utils/constants';
 
 const peso = (value) =>
     new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value) || 0);
@@ -43,8 +51,14 @@ function LineTable({ title, lines, tone }) {
     );
 }
 
-function PayslipDetail({ uuid, onBack }) {
+function PayslipDetail({ uuid, onBack, onRequestCopy, hasFulfilledCopy }) {
     const { data: slip, isLoading, isError } = useMyPayslip(uuid);
+    const [downloading, setDownloading] = useState(false);
+
+    const handleDownload = async () => {
+        setDownloading(true);
+        try { await downloadMyPayslipPdf(uuid); } finally { setDownloading(false); }
+    };
 
     if (isLoading) return <Loading size="sm" text="Loading payslip" />;
     if (isError || !slip) {
@@ -64,14 +78,38 @@ function PayslipDetail({ uuid, onBack }) {
 
     return (
         <div className="space-y-5">
-            <button
-                type="button"
-                onClick={onBack}
-                className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 cursor-pointer"
-            >
-                <ArrowLeft size={16} />
-                All payslips
-            </button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                    type="button"
+                    onClick={onBack}
+                    className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 cursor-pointer"
+                >
+                    <ArrowLeft size={16} />
+                    All payslips
+                </button>
+
+                <div className="flex items-center gap-2">
+                    {hasFulfilledCopy && (
+                        <button
+                            type="button"
+                            onClick={handleDownload}
+                            disabled={downloading}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs! font-semibold text-white transition-colors hover:bg-slate-700 disabled:opacity-60 cursor-pointer"
+                        >
+                            <Download size={14} />
+                            {downloading ? 'Preparing…' : 'Download Payslip'}
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => onRequestCopy(uuid)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm! font-semibold text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer"
+                    >
+                        <FilePlus2 size={14} />
+                        Request copy
+                    </button>
+                </div>
+            </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -122,10 +160,72 @@ function Meta({ label, value }) {
     );
 }
 
+function RequestList({ requests, onDownload, onCancel, downloadingUuid, cancelling }) {
+    if (!requests.length) return null;
+    return (
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="mb-3 text-sm font-semibold text-slate-900">My Copy Requests</p>
+            <div className="space-y-2.5">
+                {requests.map((req) => {
+                    const tone = PAYSLIP_REQUEST_STATUS_TONE[req.status] || 'bg-slate-100 text-slate-500';
+                    return (
+                        <div key={req.uuid} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <p className="truncate text-sm font-medium text-slate-700">{periodLabel(req.payslip)}</p>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${tone}`}>
+                                    {req.status}
+                                </span>
+                            </div>
+                            <p className="mt-1 truncate text-xs text-slate-400">{req.reason}</p>
+                            {req.review_remarks && (
+                                <p className="mt-1 text-xs text-slate-500">HR: {req.review_remarks}</p>
+                            )}
+                            <div className="mt-2 flex items-center gap-2">
+                                {req.status === 'fulfilled' && req.payslip?.uuid && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onDownload(req.payslip.uuid)}
+                                        disabled={downloadingUuid === req.payslip.uuid}
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-2 text-xs! font-semibold text-white hover:bg-slate-700 disabled:opacity-60 cursor-pointer"
+                                    >
+                                        <Download size={12} />
+                                        {downloadingUuid === req.payslip.uuid ? 'Preparing…' : 'Download Payslip'}
+                                    </button>
+                                )}
+                                {req.status === 'pending' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onCancel(req.uuid)}
+                                        disabled={cancelling}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5  py-2 text-xs! font-semibold text-red-600 hover:bg-slate-50 disabled:opacity-60 cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 function Payroll() {
     const navigate = useNavigate();
     const [selectedUuid, setSelectedUuid] = useState(null);
+    const [requestModal, setRequestModal] = useState({ open: false, presetUuid: null });
+    const [downloadingUuid, setDownloadingUuid] = useState(null);
     const { data: payslips = [], isLoading } = useMyPayslips(24);
+    const { data: requests = [] } = useMyPayslipRequests();
+    const cancelRequest = useCancelPayslipRequest();
+
+    const openRequestModal = (presetUuid = null) => setRequestModal({ open: true, presetUuid });
+
+    const handleRequestDownload = async (uuid) => {
+        setDownloadingUuid(uuid);
+        try { await downloadMyPayslipPdf(uuid); } finally { setDownloadingUuid(null); }
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
@@ -133,24 +233,53 @@ function Payroll() {
                 <button
                     type="button"
                     onClick={() => navigate(-1)}
-                    className="mb-5 inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 cursor-pointer"
+                    className="mb-5 inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 cursor-pointer"
                 >
                     <ArrowLeft size={16} />
                     Back
                 </button>
 
-                <div className="mb-6 flex items-center gap-3">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                        <Wallet size={20} />
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                            <Wallet size={20} />
+                        </div>
+                        <div>
+                            <p className="text-2xl font-semibold text-slate-900">Payroll</p>
+                            <p className="text-xs text-slate-500">Review, download, or request a copy of your payslips.</p>
+                        </div>
                     </div>
-                    <div>
-                        <p className="text-2xl font-semibold text-slate-900">Payroll</p>
-                        <p className="text-sm text-slate-500">Review your released payslips.</p>
-                    </div>
+                    {payslips.length > 0 && !selectedUuid && (
+                        <button
+                            type="button"
+                            onClick={() => openRequestModal(null)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs! font-semibold text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer"
+                        >
+                            <FilePlus2 size={14} />
+                            Request a copy
+                        </button>
+                    )}
                 </div>
 
+                {!selectedUuid && (
+                    <RequestList
+                        requests={requests}
+                        onDownload={handleRequestDownload}
+                        onCancel={(uuid) => cancelRequest.mutate(uuid)}
+                        downloadingUuid={downloadingUuid}
+                        cancelling={cancelRequest.isPending}
+                    />
+                )}
+
                 {selectedUuid ? (
-                    <PayslipDetail uuid={selectedUuid} onBack={() => setSelectedUuid(null)} />
+                    <PayslipDetail
+                        uuid={selectedUuid}
+                        onBack={() => setSelectedUuid(null)}
+                        onRequestCopy={(uuid) => openRequestModal(uuid)}
+                        hasFulfilledCopy={requests.some(
+                            (r) => r.status === 'fulfilled' && r.payslip?.uuid === selectedUuid
+                        )}
+                    />
                 ) : isLoading ? (
                     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <Loading size="sm" text="Loading payslips" />
@@ -194,6 +323,13 @@ function Payroll() {
                     </div>
                 )}
             </div>
+
+            <RequestPayslipModal
+                isOpen={requestModal.open}
+                onClose={() => setRequestModal({ open: false, presetUuid: null })}
+                payslips={payslips}
+                presetUuid={requestModal.presetUuid}
+            />
         </div>
     );
 }

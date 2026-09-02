@@ -3,6 +3,9 @@ import apiClient from '../api/index';
 export const documentService = {
     getMine: async () => (await apiClient.get('/documents/me')).data,
     getMyRequests: async () => (await apiClient.get('/documents/requests/me')).data,
+    // Employee asks HR for a document (COE, ITR copy, …).
+    createRequest: async (payload) => (await apiClient.post('/documents/requests/me', payload)).data,
+    cancelRequest: async (id) => (await apiClient.patch(`/documents/requests/me/${id}/cancel`)).data,
     // `payload` is a FormData built by buildDocumentForm() — the file is uploaded
     // to S3 by the backend, which stores its object key and returns a presigned
     // `file_url` on every read.

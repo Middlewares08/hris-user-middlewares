@@ -81,7 +81,7 @@ define(['./workbox-25613826'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.3hhv1o5rq44"
+    "revision": "0.7td0dhcobe"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
@@ -91,6 +91,12 @@ define(['./workbox-25613826'], (function (workbox) { 'use strict';
     "cacheName": "face-liveness",
     plugins: [new workbox.ExpirationPlugin({
       maxEntries: 4
+    })]
+  }), 'GET');
+  workbox.registerRoute(/\/assets\/address-data-.*\.js$/, new workbox.CacheFirst({
+    "cacheName": "address-data",
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 2
     })]
   }), 'GET');
 

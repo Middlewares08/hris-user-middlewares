@@ -162,6 +162,15 @@ export const DOCUMENT_REQUEST_STATUS_TONE = {
     pending: 'bg-amber-50 text-amber-700',
     fulfilled: 'bg-emerald-50 text-emerald-700',
     cancelled: 'bg-slate-100 text-slate-500',
+    declined: 'bg-rose-50 text-rose-700',
+};
+
+// payroll.payslip_requests `status` enum — pending | fulfilled | rejected | cancelled.
+export const PAYSLIP_REQUEST_STATUS_TONE = {
+    pending: 'bg-amber-50 text-amber-700',
+    fulfilled: 'bg-emerald-50 text-emerald-700',
+    rejected: 'bg-rose-50 text-rose-700',
+    cancelled: 'bg-slate-100 text-slate-500',
 };
 
 // How many days back an employee may back-file overtime, and the per-day ceiling.

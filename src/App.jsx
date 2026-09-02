@@ -41,7 +41,7 @@ function App() {
         <Route
           path="/payroll"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute permission="my-payslips:view">
               <Payroll />
             </ProtectedRoute>
           }
@@ -49,7 +49,7 @@ function App() {
         <Route
           path="/documents"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute permission="my-documents:view">
               <Documents />
             </ProtectedRoute>
           }
@@ -57,7 +57,7 @@ function App() {
         <Route
           path="/profile"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute permission="my-profile:view">
               <EditProfile />
             </ProtectedRoute>
           }
@@ -65,7 +65,7 @@ function App() {
         <Route
           path="/government-details"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute permission="my-government-details:view">
               <GovernmentDetails />
             </ProtectedRoute>
           }

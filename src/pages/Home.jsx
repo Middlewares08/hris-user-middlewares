@@ -40,10 +40,12 @@ import { useMyActivity } from '../hooks/useActivity';
 import { useMyLeaveRequests } from '../hooks/useLeave';
 import { useMyOvertimeRequests } from '../hooks/useOvertime';
 import { useMyDocumentRequests } from '../hooks/useDocuments';
+import { useMyPayslipRequests } from '../hooks/usePayslips';
 import { useFeatureFlag, usePublicSettings } from '../hooks/useSettings';
 import { useMyFaceEnrollment } from '../hooks/useFaceEnrollment';
 import { useAnnouncements } from '../hooks/useAnnouncements';
 import { LEAVE_TYPES, LEAVE_STATUS_TONE, REQUEST_STATUS_TONE, ANNOUNCEMENT_PRIORITY } from '../utils/constants';
+import { can, clearPermissions } from '../utils/permissionCheck';
 
 // Leave types that draw down the annual paid-leave credit (mirrors the backend note on
 // the `leave.annual_credits` setting). Maternity/paternity/bereavement/unpaid don't count.
@@ -51,7 +53,7 @@ const CREDITED_LEAVE_TYPES = ['vacation', 'sick', 'emergency'];
 
 // Builds the four dashboard tiles from live data. Everything is defensive so the cards
 // still render (as 0 / —) while the underlying queries are loading or empty.
-function buildStats({ leaveRequests, monthAttendance, overtimeRequests, pendingDocRequests, annualLeaveCredits, nextPayday }) {
+function buildStats({ leaveRequests, monthAttendance, overtimeRequests, pendingDocRequests, pendingPayslipRequests, annualLeaveCredits, nextPayday }) {
     const now = moment();
 
     // --- Leave balance: annual credits minus days approved this calendar year ---
@@ -76,7 +78,7 @@ function buildStats({ leaveRequests, monthAttendance, overtimeRequests, pendingD
     // --- Pending requests: leave + overtime + document requests awaiting approval ---
     const pendingLeave = leaveRequests.filter((r) => r.status === 'pending').length;
     const pendingOvertime = overtimeRequests.filter((r) => r.status === 'pending').length;
-    const pendingCount = pendingLeave + pendingOvertime + pendingDocRequests;
+    const pendingCount = pendingLeave + pendingOvertime + pendingDocRequests + pendingPayslipRequests;
 
     // --- Next payday ---
     const payDate = nextPayday?.pay_date ? moment(nextPayday.pay_date) : null;
@@ -148,12 +150,12 @@ function buildStats({ leaveRequests, monthAttendance, overtimeRequests, pendingD
 }
 
 const QUICK_ACTIONS = [
-    { id: 'time', label: 'Time In / Out', icon: Fingerprint },
-    { id: 'leave', label: 'Request Leave', icon: CalendarDays },
-    { id: 'overtime', label: 'File Overtime', icon: Clock, flag: 'overtime.enabled' },
-    { id: 'payslip', label: 'View Payslip', icon: Wallet },
-    { id: 'documents', label: 'My Documents', icon: FileText },
-    { id: 'government', label: 'Government & Bank', icon: Landmark },
+    { id: 'time', label: 'Time In / Out', icon: Fingerprint, permission: 'my-attendance:create' },
+    { id: 'leave', label: 'Request Leave', icon: CalendarDays, permission: 'my-leave:create' },
+    { id: 'overtime', label: 'File Overtime', icon: Clock, flag: 'overtime.enabled', permission: 'my-overtime:create' },
+    { id: 'payslip', label: 'View Payslip', icon: Wallet, permission: 'my-payslips:view' },
+    { id: 'documents', label: 'My Documents', icon: FileText, permission: 'my-documents:view' },
+    { id: 'government', label: 'Government & Bank', icon: Landmark, permission: 'my-government-details:view' },
 ];
 
 // Maps an activity_logs `category` to the icon + colour tone the timeline renders.
@@ -286,11 +288,17 @@ function Home() {
 
     const { enabled: isOvertimeEnabled } = useFeatureFlag('overtime.enabled', true);
     const quickActions = QUICK_ACTIONS.filter(
-        (action) => !action.flag || (action.flag === 'overtime.enabled' && isOvertimeEnabled),
+        (action) =>
+            (!action.flag || (action.flag === 'overtime.enabled' && isOvertimeEnabled)) &&
+            (!action.permission || can(action.permission)),
     );
 
     const { data: documentRequests = [] } = useMyDocumentRequests();
+    // Combined count: HR-to-employee requests still awaiting the employee's upload +
+    // the employee's own requests to HR still awaiting a response.
     const pendingDocRequests = documentRequests.filter((r) => r.status === 'pending').length;
+    const { data: payslipRequests = [] } = useMyPayslipRequests();
+    const pendingPayslipRequests = payslipRequests.filter((r) => r.status === 'pending').length;
     // Per-quick-action badge count keyed by action id.
     const quickActionBadge = { documents: pendingDocRequests };
 
@@ -349,7 +357,7 @@ function Home() {
 
     const handleSignOut = () => {
         localStorage.removeItem('accessToken');
-        sessionStorage.removeItem('permissions');
+        clearPermissions();
         queryClient.clear();
         toast.success('Signed out');
         navigate('/login', { replace: true });
@@ -418,6 +426,7 @@ function Home() {
         monthAttendance,
         overtimeRequests,
         pendingDocRequests,
+        pendingPayslipRequests,
         annualLeaveCredits,
         nextPayday,
     });

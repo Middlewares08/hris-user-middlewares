@@ -1,5 +1,6 @@
 // src/api/index.js
 import  apiClient  from '../api/index';
+import { storePermissions } from '../utils/permissionCheck';
 
 export const authService = {
     login: async (payload) => {
@@ -37,6 +38,9 @@ export const authService = {
 
     getCurrentProfile: async () => {
         const response = await apiClient.get('/auth/me');
+        // Keep the permission store in sync on every bootstrap / refetch so `can()`
+        // stays correct after a reload or in a fresh tab.
+        storePermissions(response.data?.permissions || []);
         return response.data; // Resolves to the user layout data block
     }
 };

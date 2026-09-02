@@ -22,6 +22,30 @@ export const useMyDocumentRequests = () =>
         select: (res) => res?.data || [],
     });
 
+export const useCreateDocumentRequest = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: documentService.createRequest,
+        onSuccess: (data) => {
+            toast.success(data?.message || 'Request sent to HR.');
+            invalidateKeys(queryClient);
+        },
+        onError: (error) => toast.error(error?.response?.data?.message || 'Unable to send request.'),
+    });
+};
+
+export const useCancelDocumentRequest = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (id) => documentService.cancelRequest(id),
+        onSuccess: (data) => {
+            toast.success(data?.message || 'Request withdrawn.');
+            invalidateKeys(queryClient);
+        },
+        onError: (error) => toast.error(error?.response?.data?.message || 'Unable to withdraw request.'),
+    });
+};
+
 export const useUploadDocument = () => {
     const queryClient = useQueryClient();
     return useMutation({
