@@ -25,6 +25,7 @@ import {
     AlertTriangle,
     Zap,
     X,
+    CalendarHeart,
 } from 'lucide-react';
 import { CustomAvatar } from '../components/CustomAvatar';
 import CustomEmptyPlaceholder from '../components/CustomEmptyPlaceholder';
@@ -33,8 +34,11 @@ import RequestLeaveModal from '../components/leave/RequestLeaveModal';
 import RequestOvertimeModal from '../components/overtime/RequestOvertimeModal';
 import AnnouncementModal from '../components/announcement/AnnouncementModal';
 import FaceVerifyModal from '../components/attendance/FaceVerifyModal';
+import HolidayCalendarModal from '../components/schedule/HolidayCalendarModal';
+import MyScheduleCard from '../components/schedule/MyScheduleCard';
 import { useAuthUser } from '../hooks/useAuthUser';
 import { useMyAttendanceHistory, useMyAttendanceRange, useClockIn, useClockOut } from '../hooks/useAttendance';
+import { useMyAttendanceSummary } from '../hooks/useSchedule';
 import { useNextPayday } from '../hooks/usePayslips';
 import { useMyActivity } from '../hooks/useActivity';
 import { useMyLeaveRequests } from '../hooks/useLeave';
@@ -53,7 +57,7 @@ const CREDITED_LEAVE_TYPES = ['vacation', 'sick', 'emergency'];
 
 // Builds the four dashboard tiles from live data. Everything is defensive so the cards
 // still render (as 0 / —) while the underlying queries are loading or empty.
-function buildStats({ leaveRequests, monthAttendance, overtimeRequests, pendingDocRequests, pendingPayslipRequests, annualLeaveCredits, nextPayday }) {
+function buildStats({ leaveRequests, monthAttendance, attendanceSummary, overtimeRequests, pendingDocRequests, pendingPayslipRequests, annualLeaveCredits, nextPayday }) {
     const now = moment();
 
     // --- Leave balance: annual credits minus days approved this calendar year ---
@@ -67,13 +71,24 @@ function buildStats({ leaveRequests, monthAttendance, overtimeRequests, pendingD
     const leaveRemaining = Math.max(0, annualLeaveCredits - leaveDaysUsed);
 
     // --- Attendance: month-to-date worked days over scheduled days ---
-    const workedDays = monthAttendance.reduce((sum, r) => {
-        if (r.status === 'present' || r.status === 'late') return sum + 1;
-        if (r.status === 'half_day') return sum + 0.5;
-        return sum;
-    }, 0);
-    const scheduledDays = monthAttendance.filter((r) => !['holiday', 'on_leave'].includes(r.status)).length;
-    const attendanceRate = scheduledDays ? Math.round((workedDays / scheduledDays) * 100) : 0;
+    // Prefer the schedule-aware server summary; fall back to the log heuristic
+    // if it hasn't loaded yet.
+    let workedDays;
+    let scheduledDays;
+    if (attendanceSummary) {
+        workedDays = Number(attendanceSummary.workedDays) || 0;
+        scheduledDays = Number(attendanceSummary.scheduledDays) || 0;
+    } else {
+        workedDays = monthAttendance.reduce((sum, r) => {
+            if (r.status === 'present' || r.status === 'late') return sum + 1;
+            if (r.status === 'half_day') return sum + 0.5;
+            return sum;
+        }, 0);
+        scheduledDays = monthAttendance.filter((r) => !['holiday', 'on_leave'].includes(r.status)).length;
+    }
+    const attendanceRate = attendanceSummary
+        ? Number(attendanceSummary.attendanceRate) || 0
+        : (scheduledDays ? Math.round((workedDays / scheduledDays) * 100) : 0);
 
     // --- Pending requests: leave + overtime + document requests awaiting approval ---
     const pendingLeave = leaveRequests.filter((r) => r.status === 'pending').length;
@@ -156,6 +171,7 @@ const QUICK_ACTIONS = [
     { id: 'payslip', label: 'View Payslip', icon: Wallet, permission: 'my-payslips:view' },
     { id: 'documents', label: 'My Documents', icon: FileText, permission: 'my-documents:view' },
     { id: 'government', label: 'Government & Bank', icon: Landmark, permission: 'my-government-details:view' },
+    { id: 'holidays', label: 'Holiday Calendar', icon: CalendarHeart, permission: 'my-attendance:view' },
 ];
 
 // Maps an activity_logs `category` to the icon + colour tone the timeline renders.
@@ -283,6 +299,7 @@ function Home() {
     const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
     const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
     const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
+    const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
     const [faceModalAction, setFaceModalAction] = useState(null); // null | 'in' | 'out'
     const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
 
@@ -353,6 +370,7 @@ function Home() {
         if (id === 'payslip') return navigate('/payroll');
         if (id === 'documents') return navigate('/documents');
         if (id === 'government') return navigate('/government-details');
+        if (id === 'holidays') return setIsHolidayModalOpen(true);
     };
 
     const handleSignOut = () => {
@@ -418,12 +436,14 @@ function Home() {
         dateFrom: moment().startOf('month').format('YYYY-MM-DD'),
         dateTo: moment().endOf('month').format('YYYY-MM-DD'),
     });
+    const { data: attendanceSummary } = useMyAttendanceSummary(moment().format('YYYY-MM'));
 
     const { data: nextPayday } = useNextPayday();
 
     const stats = buildStats({
         leaveRequests,
         monthAttendance,
+        attendanceSummary,
         overtimeRequests,
         pendingDocRequests,
         pendingPayslipRequests,
@@ -552,6 +572,8 @@ function Home() {
                                 </button>
                             </div>
                         </div>
+
+                        <MyScheduleCard onOpenHolidays={() => setIsHolidayModalOpen(true)} />
                     </aside>
 
                     {/* Main: stats + activity */}
@@ -850,6 +872,11 @@ function Home() {
             <RequestOvertimeModal
                 isOpen={isOvertimeModalOpen}
                 onClose={() => setIsOvertimeModalOpen(false)}
+            />
+
+            <HolidayCalendarModal
+                isOpen={isHolidayModalOpen}
+                onClose={() => setIsHolidayModalOpen(false)}
             />
 
             {faceModalAction && (
