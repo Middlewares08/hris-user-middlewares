@@ -12,6 +12,8 @@ export function useAuth() {
     const [isVerifyOTP, setIsVerifyOTP] = useState(false);
     const [tempToken, setTempToken] = useState('');
     const [maskedPhone, setMaskedPhone] = useState('');
+    const [maskedEmail, setMaskedEmail] = useState('');
+    const [otpChannels, setOtpChannels] = useState([]);
     const [devCode, setDevCode] = useState('');
     const queryClient = useQueryClient();
     const navigate = useNavigate();
@@ -23,6 +25,8 @@ export function useAuth() {
             // Store the temporary token to send with the OTP code later
             setTempToken(data.token);
             setMaskedPhone(data?.maskedPhone || '');
+            setMaskedEmail(data?.maskedEmail || '');
+            setOtpChannels(data?.channels || []);
             setDevCode(data?.devCode || '');
             // Flip the UI to show the OTP view layout state
             setIsVerifyOTP(true);
@@ -34,6 +38,8 @@ export function useAuth() {
         mutationFn: () => authService.resendLoginOtp({ token: tempToken }),
         onSuccess: (data) => {
             setMaskedPhone(data?.maskedPhone || maskedPhone);
+            setMaskedEmail(data?.maskedEmail || maskedEmail);
+            setOtpChannels(data?.channels || otpChannels);
             setDevCode(data?.devCode || '');
         },
     });
@@ -83,6 +89,8 @@ export function useAuth() {
         resendDone: resendMutation.isSuccess,
         tempToken: tempToken,
         maskedPhone,
+        maskedEmail,
+        otpChannels,
         devCode,
         loading: loginMutation.isPending || otpMutation.isPending,
         error: getError(),

@@ -10,7 +10,7 @@ function ForgotPassword() {
     const navigate = useNavigate();
     const {
         step,
-        maskedPhone,
+        sentTo,
         devCode,
         error,
         loading,
@@ -57,7 +57,7 @@ function ForgotPassword() {
                     <p className="text-2xl font-semibold leading-snug text-slate-900">Reset your password</p>
                     <p className="text-sm text-slate-500">
                         {step === 'request' && 'Confirm your email and registered mobile number'}
-                        {step === 'verify' && `Enter the 6-digit code sent to ${maskedPhone || 'your phone'}`}
+                        {step === 'verify' && `Enter the 6-digit code sent to ${sentTo}`}
                         {step === 'reset' && 'Choose a new password'}
                         {step === 'done' && 'All set'}
                     </p>

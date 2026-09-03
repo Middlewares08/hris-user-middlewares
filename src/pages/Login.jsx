@@ -12,8 +12,17 @@ function Login() {
     // Pull our centralized architectural states
     const {
         isVerifyOTP, login, verifyOtp, loading, error, tempToken,
-        maskedPhone, devCode, resendOtp, resendPending, resendDone,
+        maskedPhone, maskedEmail, otpChannels, devCode, resendOtp, resendPending, resendDone,
     } = useAuth();
+
+    // Where the second-factor code was sent — phone, email, or both.
+    const otpTarget = (() => {
+        const hasSms = otpChannels?.includes('sms') && maskedPhone;
+        const hasEmail = otpChannels?.includes('email') && maskedEmail;
+        if (hasSms && hasEmail) return `${maskedPhone} and ${maskedEmail}`;
+        if (hasEmail) return maskedEmail;
+        return maskedPhone || 'you';
+    })();
     // const { initializeSystem, result } = useSystemInit();
     
     // Controlled form inputs (initialized with safe empty strings)
@@ -65,7 +74,7 @@ function Login() {
                 <p className="text-2xl font-semibold leading-snug text-slate-900">Welcome to HRIS Middleware</p>
                 <p className="text-sm text-slate-500">
                     {isVerifyOTP
-                        ? `Enter the code we texted to ${maskedPhone || 'your phone'}`
+                        ? `Enter the code we sent to ${otpTarget}`
                         : "Sign in to continue"}
                 </p>
             </div>

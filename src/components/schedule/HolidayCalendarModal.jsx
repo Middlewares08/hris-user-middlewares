@@ -39,7 +39,7 @@ function HolidayCalendarModal({ isOpen, onClose }) {
 
     return (
         <CustomModal isOpen={isOpen} onClose={onClose} title="Holiday Calendar" size="lg" showCloseButton>
-            <div className="space-y-4">
+            <div className="space-y-4  overflow-y-auto scrollbar-y-visible text-left">
                 <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
                     <button
                         type="button"
@@ -72,7 +72,7 @@ function HolidayCalendarModal({ isOpen, onClose }) {
                     </div>
                 )}
 
-                <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+                <div className="max-h-[35vh] space-y-4  overflow-y-auto scrollbar-y-visible pr-1">
                     {isLoading ? (
                         <div className="space-y-2">
                             {[0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-slate-100" />)}
@@ -97,7 +97,7 @@ function HolidayCalendarModal({ isOpen, onClose }) {
                                                     <div className="flex items-center gap-3">
                                                         <div className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white">
                                                             <span className="text-[10px] font-semibold uppercase text-slate-400">{moment(dateStr).format('ddd')}</span>
-                                                            <span className="text-sm font-bold leading-none text-slate-700">{moment(dateStr).format('D')}</span>
+                                                            <span className="text-sm font-bold leading-none text-slate-700 pb-2">{moment(dateStr).format('D')}</span>
                                                         </div>
                                                         <div>
                                                             <p className="text-sm font-medium text-slate-800">{h.name}</p>
@@ -117,7 +117,7 @@ function HolidayCalendarModal({ isOpen, onClose }) {
                     )}
                 </div>
 
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-slate-400 text-center!">
                     Non-working holidays are excluded from your attendance rate and never counted as absences.
                 </p>
             </div>

@@ -38,7 +38,7 @@ function MyScheduleCard({ onOpenHolidays }) {
         <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
                         <CalendarClock size={18} />
                     </span>
                     <div>
@@ -50,18 +50,9 @@ function MyScheduleCard({ onOpenHolidays }) {
                         </p>
                     </div>
                 </div>
-                {onOpenHolidays && (
-                    <button
-                        type="button"
-                        onClick={onOpenHolidays}
-                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50"
-                    >
-                        <CalendarDays size={13} /> Holidays
-                    </button>
-                )}
             </div>
 
-            <div className="mt-4 flex gap-1.5">
+            <div className="my-4 flex gap-1.5">
                 {WEEKDAYS.map(({ wd, s }, i) => {
                     const d = days.find((x) => Number(x.weekday) === wd);
                     const on = d?.is_workday;
