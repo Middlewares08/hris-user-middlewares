@@ -65,6 +65,12 @@ function faceWellFramed(box, vw, vh) {
  */
 export default function FaceVerifyModal({ action, liveness, submitting, onClose, onCapture }) {
     const [mode, setMode] = useState(liveness ? 'liveness' : 'photo'); // 'liveness' | 'photo'
+
+    // If the liveness flag turns off while this modal is already open, never keep
+    // showing the challenge — drop straight to the photo path.
+    useEffect(() => {
+        if (!liveness) setMode((current) => (current === 'liveness' ? 'photo' : current));
+    }, [liveness]);
     const [photoSource, setPhotoSource] = useState('camera'); // 'camera' | 'upload'
     const [stream, setStream] = useState(null);
     const [notice, setNotice] = useState(null);

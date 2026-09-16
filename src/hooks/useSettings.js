@@ -2,14 +2,16 @@ import { useQuery } from '@tanstack/react-query';
 import { settingsService } from '../services/settingsServices';
 
 /**
- * Public application settings / feature flags. Cached generously — these change rarely.
+ * Public application settings / feature flags. Short staleTime so an admin toggle
+ * (e.g. disabling the face-liveness challenge) reaches an already-open session
+ * quickly via React Query's normal refetch-on-focus/-mount, without a poll.
  */
 export const usePublicSettings = () => {
     return useQuery({
         queryKey: ['publicSettings'],
         queryFn: settingsService.getPublic,
         select: (res) => res?.data || {},
-        staleTime: 5 * 60 * 1000,
+        staleTime: 30 * 1000,
     });
 };
 
