@@ -1,14 +1,15 @@
 // src/pages/EditProfile.jsx
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, UserPen, Mail, Phone, MapPin, ShieldAlert, IdCard, Building2 } from 'lucide-react';
+import { ArrowLeft, UserPen, Mail, Phone, MapPin, ShieldAlert, IdCard, Building2, GraduationCap, Plus, Trash2 } from 'lucide-react';
 import CustomInput from '../components/CustomInput';
 import CustomButton from '../components/CustomButton';
 import CustomDropdown from '../components/CustomDropdown';
 import Loading from '../components/Loading';
 import { CustomAvatar } from '../components/CustomAvatar';
 import { useMyProfile, useUpdateProfile } from '../hooks/useProfile';
-import { RELATIONSHIP_OPTIONS } from '../utils/constants';
+import { useMyEducation, useUpdateEducation } from '../hooks/useEducation';
+import { RELATIONSHIP_OPTIONS, EDUCATION_LEVELS } from '../utils/constants';
 import { getRegions, getProvinces, getCities, getBarangays, resolveZip, resolveAddress } from '../utils/psgc';
 
 // The editable fields, flat — mirrors the PATCH /auth/me/profile body.
@@ -44,21 +45,68 @@ function toForm(profile) {
     };
 }
 
+// --- Educational background: a repeatable list, backed by its own endpoint
+// (/auth/me/education) — tracked and saved alongside the profile fields above,
+// but as its own dirty/baseline pair since it isn't part of the profile PATCH body.
+const blankEducationEntry = () => ({
+    education_level: 'college',
+    school_name: '',
+    degree: '',
+    year_started: '',
+    year_graduated: '',
+    honors: '',
+});
+
+const educationRowKey = (row, index) => row.id ?? index;
+
+function toEducationForm(rows) {
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row) => ({
+        id: row.id,
+        education_level: row.education_level || 'college',
+        school_name: row.school_name || '',
+        degree: row.degree || '',
+        year_started: row.year_started ? String(row.year_started) : '',
+        year_graduated: row.year_graduated ? String(row.year_graduated) : '',
+        honors: row.honors || '',
+    }));
+}
+
 function EditProfile() {
     const navigate = useNavigate();
     const { data: profile, isLoading, isError } = useMyProfile();
     const updateProfile = useUpdateProfile();
+    const { data: education, isLoading: isEducationLoading } = useMyEducation();
+    const updateEducation = useUpdateEducation();
 
     const [form, setForm] = useState(EMPTY_FORM);
     const [errors, setErrors] = useState({});
+    const [educationEntries, setEducationEntries] = useState([]);
+    const [educationBaseline, setEducationBaseline] = useState([]);
 
     // Seed the form once the profile lands (and re-seed after a successful save re-fetch).
     useEffect(() => {
         if (profile) setForm(toForm(profile));
     }, [profile]);
 
+    useEffect(() => {
+        if (education) {
+            const rows = toEducationForm(education);
+            setEducationEntries(rows);
+            setEducationBaseline(rows);
+        }
+    }, [education]);
+
     const baseline = useMemo(() => toForm(profile), [profile]);
-    const isDirty = EDITABLE_FIELDS.some((key) => form[key] !== baseline[key]);
+    const profileDirty = EDITABLE_FIELDS.some((key) => form[key] !== baseline[key]);
+    const educationDirty = JSON.stringify(educationEntries) !== JSON.stringify(educationBaseline);
+    const isDirty = profileDirty || educationDirty;
+    const isSaving = updateProfile.isPending || updateEducation.isPending;
+
+    const updateEducationEntry = (index, fields) =>
+        setEducationEntries((prev) => prev.map((entry, i) => (i === index ? { ...entry, ...fields } : entry)));
+    const addEducationEntry = () => setEducationEntries((prev) => [...prev, blankEducationEntry()]);
+    const removeEducationEntry = (index) => setEducationEntries((prev) => prev.filter((_, i) => i !== index));
 
     const setField = (key, value) => {
         setForm((prev) => ({ ...prev, [key]: value }));
@@ -80,22 +128,43 @@ function EditProfile() {
         return Object.keys(next).length === 0;
     };
 
-    const handleSubmit = (event) => {
+    const handleSubmit = async (event) => {
         event.preventDefault();
-        if (!isDirty || !validate()) return;
+        if (!isDirty) return;
+        if (profileDirty && !validate()) return;
 
-        // Send only the fields that actually changed.
-        const payload = EDITABLE_FIELDS.reduce((acc, key) => {
-            if (form[key] !== baseline[key]) acc[key] = form[key].trim();
-            return acc;
-        }, {});
+        try {
+            if (profileDirty) {
+                // Send only the fields that actually changed.
+                const payload = EDITABLE_FIELDS.reduce((acc, key) => {
+                    if (form[key] !== baseline[key]) acc[key] = form[key].trim();
+                    return acc;
+                }, {});
+                await updateProfile.mutateAsync(payload);
+            }
 
-        updateProfile.mutate(payload);
+            if (educationDirty) {
+                const payload = educationEntries
+                    .filter((entry) => entry.school_name.trim())
+                    .map((entry) => ({
+                        education_level: entry.education_level,
+                        school_name: entry.school_name.trim(),
+                        degree: entry.degree.trim() || null,
+                        year_started: entry.year_started || null,
+                        year_graduated: entry.year_graduated || null,
+                        honors: entry.honors.trim() || null,
+                    }));
+                await updateEducation.mutateAsync({ education: payload });
+            }
+        } catch {
+            // Each mutation hook already surfaces its own error toast.
+        }
     };
 
     const handleReset = () => {
         setForm(baseline);
         setErrors({});
+        setEducationEntries(educationBaseline);
     };
 
     // --- Home Address: cascading PSGC picker (region → province → city → barangay) ---
@@ -158,7 +227,7 @@ function EditProfile() {
                     </div>
                     <div>
                         <p className="text-2xl font-semibold text-slate-900">Edit Profile</p>
-                        <p className="text-sm text-slate-500">Update your contact details and emergency contact.</p>
+                        <p className="text-sm text-slate-500">Update your contact details, emergency contact, and educational background.</p>
                     </div>
                 </div>
 
@@ -358,13 +427,108 @@ function EditProfile() {
                             )}
                         </section>
 
+                        {/* Educational background — own endpoint, tracked alongside the profile fields */}
+                        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                            <div className="mb-4 flex items-center gap-2">
+                                <GraduationCap size={16} className="text-slate-400" />
+                                <p className="text-sm font-semibold text-slate-900">Educational Background</p>
+                            </div>
+
+                            {isEducationLoading ? (
+                                <Loading size="sm" text="Loading your education records" />
+                            ) : (
+                                <div className="space-y-4">
+                                    {educationEntries.length === 0 && (
+                                        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 py-8 text-slate-400">
+                                            <GraduationCap size={22} />
+                                            <span className="text-sm">No education entries yet.</span>
+                                        </div>
+                                    )}
+
+                                    {educationEntries.map((entry, index) => (
+                                        <div key={educationRowKey(entry, index)} className="relative rounded-xl border border-slate-100 bg-slate-50 p-4 space-y-4">
+                                            <button
+                                                type="button"
+                                                onClick={() => removeEducationEntry(index)}
+                                                className="absolute right-3 top-3 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 cursor-pointer"
+                                                title="Remove entry"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+
+                                            <div className="grid grid-cols-1 gap-4 pr-8 sm:grid-cols-2">
+                                                <CustomDropdown
+                                                    label="Education Level"
+                                                    options={EDUCATION_LEVELS}
+                                                    value={entry.education_level}
+                                                    onChange={(val) => updateEducationEntry(index, { education_level: val })}
+                                                    renderProps="label"
+                                                    returnProps="value"
+                                                    placeholder="Select level"
+                                                />
+                                                <CustomInput
+                                                    label="School Name"
+                                                    value={entry.school_name}
+                                                    onChange={(e) => updateEducationEntry(index, { school_name: e.target.value })}
+                                                    placeholder="Ex. University of Santo Tomas"
+                                                    maxLength={150}
+                                                />
+                                            </div>
+
+                                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                                <CustomInput
+                                                    label="Degree / Course"
+                                                    value={entry.degree}
+                                                    onChange={(e) => updateEducationEntry(index, { degree: e.target.value })}
+                                                    placeholder="Ex. BS Computer Science"
+                                                    maxLength={150}
+                                                />
+                                                <CustomInput
+                                                    label="Honors"
+                                                    value={entry.honors}
+                                                    onChange={(e) => updateEducationEntry(index, { honors: e.target.value })}
+                                                    placeholder="Ex. Cum Laude"
+                                                    maxLength={100}
+                                                />
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <CustomInput
+                                                    label="Year Started"
+                                                    value={entry.year_started}
+                                                    onChange={(e) => updateEducationEntry(index, { year_started: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                                                    placeholder="Ex. 2016"
+                                                    maxLength={4}
+                                                />
+                                                <CustomInput
+                                                    label="Year Graduated"
+                                                    value={entry.year_graduated}
+                                                    onChange={(e) => updateEducationEntry(index, { year_graduated: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                                                    placeholder="Ex. 2020"
+                                                    maxLength={4}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <button
+                                        type="button"
+                                        onClick={addEducationEntry}
+                                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 py-2.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 cursor-pointer"
+                                    >
+                                        <Plus size={16} /> Add Education Entry
+                                    </button>
+                                </div>
+                            )}
+                        </section>
+
                         <div className="flex items-center justify-end gap-3">
                             <CustomButton
                                 type="button"
                                 variant="outline"
                                 size="sm"
                                 onClick={handleReset}
-                                disabled={!isDirty || updateProfile.isPending}
+                                disabled={!isDirty || isSaving}
                             >
                                 Discard Changes
                             </CustomButton>
@@ -372,7 +536,7 @@ function EditProfile() {
                                 type="submit"
                                 variant="primary"
                                 size="sm"
-                                isLoading={updateProfile.isPending}
+                                isLoading={isSaving}
                                 disabled={!isDirty}
                             >
                                 Save Changes

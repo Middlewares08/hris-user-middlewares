@@ -125,6 +125,14 @@ export const PH_STATUTORY_FORMATS = {
     pagibig_number: { label: 'Pag-IBIG MID Number', placeholder: '1234-5678-9012', digits: [12] },
 };
 
+export const EDUCATION_LEVELS = [
+    { label: 'Elementary', value: 'elementary' },
+    { label: 'Secondary / High School', value: 'secondary' },
+    { label: 'Vocational', value: 'vocational' },
+    { label: 'College', value: 'college' },
+    { label: 'Graduate / Post-graduate', value: 'graduate' },
+];
+
 export const DOCUMENT_TYPES = [
     { label: 'Resume', value: 'resume' },
     { label: 'Medical', value: 'medical' },
