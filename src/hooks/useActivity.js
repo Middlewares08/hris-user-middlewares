@@ -2,11 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { activityService } from '../services/activityServices';
 
-export const useMyActivity = (limit = 5) => {
+export const useMyActivity = (limit = 5, options = {}) => {
     return useQuery({
         queryKey: ['myActivity', limit],
         queryFn: () => activityService.getMyActivity({ limit }),
         select: (res) => res?.data || [],
+        ...options,
     });
 };
 

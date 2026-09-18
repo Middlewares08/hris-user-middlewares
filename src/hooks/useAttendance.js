@@ -2,11 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { attendanceService } from '../services/attendanceServices';
 
-export const useMyAttendanceHistory = (limit = 5) => {
+export const useMyAttendanceHistory = (limit = 5, options = {}) => {
     return useQuery({
         queryKey: ['myAttendance', limit],
         queryFn: () => attendanceService.getMyHistory({ limit }),
         select: (res) => res?.data || [],
+        ...options,
     });
 };
 

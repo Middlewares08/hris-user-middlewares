@@ -16,8 +16,6 @@ import {
     LogOut,
     TrendingUp,
     Clock,
-    CheckCircle2,
-    AlertCircle,
     IdCard,
     Landmark,
     Building2,
@@ -28,12 +26,14 @@ import {
     CalendarHeart,
 } from 'lucide-react';
 import { CustomAvatar } from '../components/CustomAvatar';
-import CustomEmptyPlaceholder from '../components/CustomEmptyPlaceholder';
-import Loading from '../components/Loading';
 import RequestLeaveModal from '../components/leave/RequestLeaveModal';
 import RequestOvertimeModal from '../components/overtime/RequestOvertimeModal';
 import AnnouncementModal from '../components/announcement/AnnouncementModal';
 import FaceVerifyModal from '../components/attendance/FaceVerifyModal';
+import ClockHistoryList from '../components/attendance/ClockHistoryList';
+import ClockInHistoryModal from '../components/attendance/ClockInHistoryModal';
+import ActivityTimeline from '../components/activity/ActivityTimeline';
+import RecentActivityModal from '../components/activity/RecentActivityModal';
 import HolidayCalendarModal from '../components/schedule/HolidayCalendarModal';
 import MyScheduleCard from '../components/schedule/MyScheduleCard';
 import { useAuthUser } from '../hooks/useAuthUser';
@@ -50,6 +50,7 @@ import { useMyFaceEnrollment } from '../hooks/useFaceEnrollment';
 import { useAnnouncements } from '../hooks/useAnnouncements';
 import { LEAVE_TYPES, LEAVE_STATUS_TONE, REQUEST_STATUS_TONE, ANNOUNCEMENT_PRIORITY } from '../utils/constants';
 import { can, clearPermissions } from '../utils/permissionCheck';
+import { mapActivityRecord, mapAttendanceRecord } from '../utils/dashboardMappers';
 
 // Leave types that draw down the annual paid-leave credit (mirrors the backend note on
 // the `leave.annual_credits` setting). Maternity/paternity/bereavement/unpaid don't count.
@@ -174,34 +175,6 @@ const QUICK_ACTIONS = [
     { id: 'holidays', label: 'Holiday Calendar', icon: CalendarHeart, permission: 'my-attendance:view' },
 ];
 
-// Maps an activity_logs `category` to the icon + colour tone the timeline renders.
-const ACTIVITY_CATEGORY = {
-    attendance: { icon: Clock, tone: 'text-indigo-600 bg-indigo-50' },
-    leave: { icon: CalendarDays, tone: 'text-emerald-600 bg-emerald-50' },
-    payroll: { icon: Wallet, tone: 'text-violet-600 bg-violet-50' },
-    profile: { icon: UserPen, tone: 'text-sky-600 bg-sky-50' },
-    document: { icon: FileText, tone: 'text-amber-600 bg-amber-50' },
-    system: { icon: Zap, tone: 'text-slate-500 bg-slate-100' },
-};
-
-// Maps a raw employee.activity_logs row (from GET /activity-logs/me) into the timeline shape.
-function mapActivityRecord(record, now = moment()) {
-    const cat = ACTIVITY_CATEGORY[record.category] || ACTIVITY_CATEGORY.system;
-    const when = moment(record.created_at);
-
-    return {
-        id: record.id,
-        label: record.description,
-        time: when.isSame(now, 'day')
-            ? `Today, ${when.format('h:mm A')}`
-            : when.isSame(now.clone().subtract(1, 'day'), 'day')
-                ? `Yesterday, ${when.format('h:mm A')}`
-                : when.format('MMM D, h:mm A'),
-        icon: cat.icon,
-        tone: cat.tone,
-    };
-}
-
 const LEAVE_TYPE_LABELS = LEAVE_TYPES.reduce(
     (acc, { value, label }) => ({ ...acc, [value]: label }),
     {},
@@ -247,51 +220,6 @@ function mapAnnouncementRecord(record) {
     };
 }
 
-const ATTENDANCE_STATUS_LABELS = {
-    present: 'On Time',
-    late: 'Late',
-    half_day: 'Half Day',
-    absent: 'Absent',
-    on_leave: 'On Leave',
-    holiday: 'Holiday',
-};
-
-// Maps a raw attendance.attendance_logs row (from GET /attendance/me) into the shape the timeline card renders.
-// `now` is injected (rather than read via moment() inline) so the caller can tick it every second for a live counter.
-function mapAttendanceRecord(record, now = moment()) {
-    const logDay = moment(record.log_date);
-    const isToday = logDay.isSame(now, 'day');
-    const isCurrent = isToday && !record.time_out;
-
-    let hours = '—';
-    let percent = 0;
-
-    if (isCurrent && record.time_in) {
-        const totalSeconds = Math.max(0, now.diff(moment(record.time_in), 'seconds'));
-        const h = Math.floor(totalSeconds / 3600);
-        const m = Math.floor((totalSeconds % 3600) / 60);
-        const s = totalSeconds % 60;
-        hours = `${h}h ${m}m ${String(s).padStart(2, '0')}s so far`;
-        percent = Math.min(95, Math.round((totalSeconds / (8 * 3600)) * 100));
-    } else if (typeof record.worked_hours === 'number') {
-        const h = Math.floor(record.worked_hours);
-        const m = Math.round((record.worked_hours - h) * 60);
-        hours = `${h}h ${String(m).padStart(2, '0')}m`;
-        percent = Math.min(100, Math.round((record.worked_hours / 8) * 100));
-    }
-
-    return {
-        id: record.id,
-        date: isToday ? `Today, ${logDay.format('MMM D')}` : logDay.format('MMM D'),
-        timeIn: record.time_in ? moment(record.time_in).format('h:mm A') : '—',
-        timeOut: record.time_out ? moment(record.time_out).format('h:mm A') : (isCurrent ? 'In Progress' : '—'),
-        hours,
-        status: ATTENDANCE_STATUS_LABELS[record.status] || record.status,
-        percent,
-        isCurrent,
-    };
-}
-
 function Home() {
     const { data: user } = useAuthUser();
     const navigate = useNavigate();
@@ -302,6 +230,8 @@ function Home() {
     const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
     const [faceModalAction, setFaceModalAction] = useState(null); // null | 'in' | 'out'
     const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+    const [isClockHistoryModalOpen, setIsClockHistoryModalOpen] = useState(false);
+    const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
 
     const { enabled: isOvertimeEnabled } = useFeatureFlag('overtime.enabled', true);
     const quickActions = QUICK_ACTIONS.filter(
@@ -407,8 +337,20 @@ function Home() {
 
     const clockHistory = attendanceHistory.map((record) => mapAttendanceRecord(record, now));
 
+    // Full history behind the "View All" modal — only fetched once it's opened.
+    const { data: fullAttendanceHistory = [], isLoading: isFullHistoryLoading } = useMyAttendanceHistory(30, {
+        enabled: isClockHistoryModalOpen,
+    });
+    const fullClockHistory = fullAttendanceHistory.map((record) => mapAttendanceRecord(record, now));
+
     const { data: activityLog = [], isLoading: isActivityLoading } = useMyActivity(4);
     const recentActivity = activityLog.map((record) => mapActivityRecord(record, now));
+
+    // Full activity feed behind the "View All" modal — only fetched once it's opened.
+    const { data: fullActivityLog = [], isLoading: isFullActivityLoading } = useMyActivity(50, {
+        enabled: isActivityModalOpen,
+    });
+    const fullRecentActivity = fullActivityLog.map((record) => mapActivityRecord(record, now));
 
     const { data: announcementRecords = [], isLoading: isAnnouncementsLoading } = useAnnouncements(10);
     const announcements = announcementRecords.map(mapAnnouncementRecord);
@@ -617,75 +559,16 @@ function Home() {
                                             <p className="text-xs text-slate-400">Weekly shift timeline</p>
                                         </div>
                                     </div>
-                                    {/* <span className="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">
-                                        <TrendingUp size={12} /> 98% Punctual
-                                    </span> */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsClockHistoryModalOpen(true)}
+                                        className="text-xs font-semibold text-indigo-600 transition-colors hover:text-indigo-700 cursor-pointer"
+                                    >
+                                        View All
+                                    </button>
                                 </div>
 
-                                {isHistoryLoading ? (
-                                    <Loading size="sm" text="Loading history" />
-                                ) : clockHistory.length === 0 ? (
-                                    <CustomEmptyPlaceholder
-                                        icon={Fingerprint}
-                                        title="No attendance records yet"
-                                        description="Your clock-in history will show up here once you start logging your time."
-                                        hasButton={false}
-                                    />
-                                ) : (
-                                    <div className="space-y-3">
-                                        {clockHistory.map(({ id, date, timeIn, timeOut, hours, status, percent, isCurrent }) => {
-                                            const isLate = status === 'Late';
-
-                                            return (
-                                                <div
-                                                    key={id}
-                                                    className={`rounded-xl border p-3.5 transition-colors ${
-                                                        isCurrent
-                                                            ? 'border-indigo-200 bg-indigo-50/60'
-                                                            : 'border-slate-100 bg-slate-50/70 hover:border-slate-200'
-                                                    }`}
-                                                >
-                                                    <div className="mb-2 flex items-center justify-between text-xs">
-                                                        <span className={`font-semibold ${isCurrent ? 'text-indigo-600' : 'text-slate-700'}`}>
-                                                            {date}
-                                                        </span>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-mono text-[11px] text-slate-400">{hours}</span>
-                                                            <span
-                                                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                                                    isLate
-                                                                        ? 'bg-amber-50 text-amber-700'
-                                                                        : 'bg-emerald-50 text-emerald-700'
-                                                                }`}
-                                                            >
-                                                                {isLate ? <AlertCircle size={10} /> : <CheckCircle2 size={10} />}
-                                                                {status}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="relative my-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-200">
-                                                        <div
-                                                            className={`h-full rounded-full transition-all duration-500 ${
-                                                                isCurrent
-                                                                    ? 'animate-pulse bg-gradient-to-r from-indigo-500 to-indigo-400'
-                                                                    : isLate
-                                                                        ? 'bg-amber-400'
-                                                                        : 'bg-emerald-400'
-                                                            }`}
-                                                            style={{ width: `${percent}%` }}
-                                                        />
-                                                    </div>
-
-                                                    <div className="mt-1.5 flex justify-between font-mono text-[11px] text-slate-500">
-                                                        <span>In: <strong className="text-slate-700">{timeIn}</strong></span>
-                                                        <span>Out: <strong className={isCurrent ? 'italic text-indigo-600' : 'text-slate-700'}>{timeOut}</strong></span>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
+                                <ClockHistoryList history={clockHistory} isLoading={isHistoryLoading} />
                             </div>
 
                             {/* Announcements + recent activity */}
@@ -736,27 +619,17 @@ function Home() {
                                 </div>
 
                                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                    <p className="mb-4 text-sm font-semibold text-slate-900">Recent Activity</p>
-                                    {isActivityLoading ? (
-                                        <p className="text-sm text-slate-500">Loading activity…</p>
-                                    ) : recentActivity.length === 0 ? (
-                                        <p className="text-sm text-slate-500">No recent activity yet.</p>
-                                    ) : (
-                                        <div className="relative space-y-5">
-                                            <div className="absolute bottom-4 left-4 top-4 w-px bg-slate-100" />
-                                            {recentActivity.map(({ id, label, time, icon: Icon, tone }) => (
-                                                <div key={id} className="relative flex items-center gap-3">
-                                                    <div className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-4 ring-white ${tone}`}>
-                                                        <Icon size={15} />
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <p className="truncate text-sm font-medium text-slate-700">{label}</p>
-                                                        <p className="text-xs text-slate-400">{time}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                    <div className="mb-4 flex items-center justify-between">
+                                        <p className="text-sm font-semibold text-slate-900">Recent Activity</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsActivityModalOpen(true)}
+                                            className="text-xs font-semibold text-indigo-600 transition-colors hover:text-indigo-700 cursor-pointer"
+                                        >
+                                            View All
+                                        </button>
+                                    </div>
+                                    <ActivityTimeline activity={recentActivity} isLoading={isActivityLoading} />
                                 </div>
 
                                 {/* Upcoming leave */}
@@ -893,6 +766,20 @@ function Home() {
                 isOpen={Boolean(selectedAnnouncement)}
                 onClose={() => setSelectedAnnouncement(null)}
                 announcement={selectedAnnouncement}
+            />
+
+            <ClockInHistoryModal
+                isOpen={isClockHistoryModalOpen}
+                onClose={() => setIsClockHistoryModalOpen(false)}
+                history={fullClockHistory}
+                isLoading={isFullHistoryLoading}
+            />
+
+            <RecentActivityModal
+                isOpen={isActivityModalOpen}
+                onClose={() => setIsActivityModalOpen(false)}
+                activity={fullRecentActivity}
+                isLoading={isFullActivityLoading}
             />
 
             {/* Floating Quick Actions — speed-dial, mobile / small screens only */}
